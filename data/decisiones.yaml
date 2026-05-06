@@ -1,0 +1,281 @@
+# ============================================================================
+# decisiones.yaml — palancas de decisión del grupo Proyecto ABAST
+# ============================================================================
+#
+# Única fuente de configuración variable del proyecto. Cualquier cambio aquí
+# debe regenerar todos los outputs ejecutando:
+#     python main.py --escenario <base|optimista|pesimista|todos>
+#
+# TRES ESCENARIOS OBLIGATORIOS para defender la robustez ante el reequilibrio
+# económico (mecanismo LCSP):
+#   - pesimista: hipótesis conservadoras, base para reclamar compensación
+#   - base:      hipótesis razonables, lo que se defiende en la oferta
+#   - optimista: hipótesis favorables, defensa ante posible clawback
+#
+# Optimista y pesimista heredan de base — sólo se redefine lo que cambia.
+# La función load.load_decisiones() implementa deep merge.
+#
+# IMPORTANTE — VALORES A VALIDAR CON EL PROFESOR antes de la entrega final:
+# alpha_objetivo, anios_rampa, overbooking, capex_extra del datacenter,
+# tasa de descuento, vidas útiles de equipos, ratios de personal,
+# y cualquier valor marcado con [PROPUESTA] en los comentarios.
+# ============================================================================
+
+escenarios:
+
+  # ==========================================================================
+  # ESCENARIO BASE — el que se defiende en la oferta económica
+  # ==========================================================================
+  base:
+
+    # ------------------------------------------------------------------------
+    # 1. MERCADO MAYORISTA
+    # ------------------------------------------------------------------------
+    # Estrategia de captura de cuota entre los operadores ya presentes en cada
+    # municipio (columna Num Operadores del Excel).
+    mayorista:
+
+      cuota_mercado:
+        # Tres estrategias:
+        #   equilibrio: alpha = 1 / (num_operadores + 1)  -- entramos como uno más
+        #   agresivo:   alpha = 1 / num_operadores         -- desplazamos a uno
+        #   rampa:      alpha(anio) = alpha_objetivo × min(anio/anios_rampa, 1)
+        # Recomendado: rampa, modela captura progresiva.
+        tipo: rampa
+        alpha_objetivo: 0.40         # [PROPUESTA] cuota objetivo en régimen estacionario
+        anios_rampa: 8               # [PROPUESTA] años para alcanzar la cuota objetivo
+
+      # Producto comercial mayorista para clientes residenciales (vía operador)
+      bw_por_hogar_mbps: 100         # ancho de banda comercial por hogar
+      habitantes_por_hogar: 2.5      # ratio INE España (audio del profe)
+      overbooking: 20                # 1:N residencial — [PROPUESTA] estándar industria
+
+      # Mix entre clientes residenciales y empresariales (B2B vía operadores)
+      mix_clientes:
+        residencial_pct: 0.95        # 95% residencial mayorista
+        empresarial_pct: 0.05        # 5% PYMES vía operador virtual
+      bw_empresa_mbps: 1000          # tier empresa, mayor ARPU
+      overbooking_empresa: 5         # 1:5 empresa, menor que residencial
+
+    # ------------------------------------------------------------------------
+    # 2. SEDES ABAST (autoprestación)
+    # ------------------------------------------------------------------------
+    # Servicios críticos a la administración. Sin decisiones de mercado
+    # (cobertura obligatoria al 100% según las bases del concurso).
+    abast:
+      bw_por_sede_mbps: 100          # confirmado por el profe
+      overbooking: 1                 # 1:1, sin overbooking (BW garantizado)
+      sla_uptime: 0.999              # 99.9% disponibilidad (8.76 h/año downtime)
+      sla_mttr_horas: 4              # tiempo máximo de reparación
+
+    # ------------------------------------------------------------------------
+    # 3. SELECCIÓN DE EQUIPOS POR NODO DE AGREGACIÓN
+    # ------------------------------------------------------------------------
+    # Umbrales en nº de puertos ocupados (downstream sedes/clientes) que
+    # disparan el upgrade del equipo:
+    #   N <=  8 -> 10p (1.500 €)
+    #   N <= 16 -> 20p (5.000 €)
+    #   N <= 36 -> 40p (12.000 €)
+    #   N >  36 -> MPLS troncal (50.000 €) o múltiples 40p en paralelo
+    equipos:
+      umbral_10p_a_20p: 8            # [PROPUESTA]
+      umbral_20p_a_40p: 16           # [PROPUESTA]
+      umbral_40p_a_mpls: 36          # [PROPUESTA]
+
+      # Política de redundancia de equipos en nodos críticos:
+      #   none     -> un solo equipo por nodo (CAPEX mínimo, riesgo SPOF)
+      #   critico  -> 1+1 sólo en nodos troncales y A900
+      #   completo -> 1+1 en todos los nodos de agregación y troncal
+      redundancia: critico
+
+      # Vida útil técnica (años) — para amortización y reposición CAPEX
+      vida_util_cliente: 8           # [PROPUESTA]
+      vida_util_agregacion: 10       # [PROPUESTA]
+      vida_util_troncal: 12          # [PROPUESTA]
+      vida_util_obra_civil: 30       # se amortiza a 20 (vida concesión)
+
+    # ------------------------------------------------------------------------
+    # 4. PLAN DE DESPLIEGUE PLURIANUAL
+    # ------------------------------------------------------------------------
+    # En qué orden y a qué velocidad construir la red de acceso.
+    despliegue:
+      # Estrategia:
+      #   uniforme:   reparte 4.825 km uniformemente en 20 años
+      #   priorizado: orden por criterio (ver `prioridad`)
+      #   progresivo: espina dorsal y ciudades grandes primero,
+      #               expansión radial a municipios pequeños después
+      estrategia: progresivo
+
+      # Si estrategia=priorizado, criterio de orden:
+      #   hab_descendente | sedes_descendente | num_op_descendente
+      prioridad: hab_descendente
+
+      # Topes anuales operativos (cuello de botella obra civil + RRHH)
+      km_max_anuales: 500            # [PROPUESTA]
+      sedes_max_anuales: 400         # [PROPUESTA]
+
+      # Sobreaprovisionamiento de capacidad (overprovisioning) — dimensionar
+      # al alza para anticipar crecimiento futuro de demanda.
+      sobreaprovisionamiento_pct: 0.20
+
+      # Año de inicio de la concesión (anio 1 = primer año operativo)
+      anio_inicio: 1
+
+    # ------------------------------------------------------------------------
+    # 5. DATACENTER A900
+    # ------------------------------------------------------------------------
+    # A900 es el CPD del operador, NOC, salida internet pública. Costes
+    # adicionales NO incluidos en el Excel del profe.
+    datacenter_a900:
+      capex_extra: 5000000           # [PROPUESTA] inversión inicial (espacio, energía, refri, seguridad, IT)
+      opex_extra_anual: 500000       # [PROPUESTA] operación (electricidad, climatización, IT)
+
+      # Redundancia geográfica: PoP secundario en otro nodo troncal con
+      # replicación síncrona para garantizar continuidad si falla A900.
+      pop_secundario_activo: false
+      pop_secundario_capex: 3000000  # [PROPUESTA] si pop_secundario_activo=true
+
+    # ------------------------------------------------------------------------
+    # 6. REDUNDANCIA ADICIONAL DE LA RED
+    # ------------------------------------------------------------------------
+    # Caminos físicos extra para mejorar SLA. Añade aristas al grafo y CAPEX.
+    redundancia_extra:
+      # Doble homing: sedes críticas con dos enlaces a dos nodos de
+      # agregación distintos.
+      doble_homing_sedes_criticas: true
+      umbral_sedes_para_doble_homing: 50  # municipios con >=50 sedes ABAST
+
+      # Anillos de acceso (en lugar de árboles) para zonas urbanas densas
+      anillos_acceso_zonas_urbanas: false
+      umbral_hab_anillo_acceso: 50000
+
+    # ------------------------------------------------------------------------
+    # 7. MODELO FINANCIERO
+    # ------------------------------------------------------------------------
+    descuento:
+      tasa: 0.06                     # [PROPUESTA] estándar infraestructura pública
+      anios: 20                      # horizonte de la concesión
+
+    impuestos:
+      sociedades_pct: 0.25           # tipo general España
+      iva_pct: 0.21                  # informativo, no afecta cuenta de resultados
+
+    amortizacion:
+      tipo: lineal                   # lineal | acelerada
+      reversion_administracion: true # al fin de los 20 años, la red revierte a la admin
+
+    # Estructura de capital (apalancamiento). No afecta NPV operativo pero
+    # sí cash flow y necesidad de financiación inicial.
+    financiacion:
+      apalancamiento_pct: 0.50       # [PROPUESTA] 50% deuda / 50% equity
+      coste_deuda: 0.04              # [PROPUESTA] 4% interés (entorno actual)
+      plazo_amortizacion_deuda_anios: 15
+
+    # ------------------------------------------------------------------------
+    # 8. RECURSOS HUMANOS
+    # ------------------------------------------------------------------------
+    # Estimación del personal necesario para operar la red.
+    rrhh:
+      empleados_base_noc: 5                    # [PROPUESTA] NOC 24x7
+      empleados_base_admin: 10                 # [PROPUESTA] administración, ventas, gestión
+      ratio_km_por_empleado_campo: 200         # [PROPUESTA] 1 técnico por 200 km activos
+      ratio_sedes_por_empleado_soporte: 500    # [PROPUESTA] 1 técnico soporte por 500 sedes
+      salario_medio_empleado: 50000            # [PROPUESTA] bruto anual con cuota patronal
+
+    # ------------------------------------------------------------------------
+    # 9. TARIFAS PROPUESTAS A LA ADMINISTRACIÓN
+    # ------------------------------------------------------------------------
+    # Las tarifas BASE vienen del Excel (1.000 € ABAST, 700 € mayorista, etc.).
+    # La oferta puede proponer modificaciones que mejoren la propuesta:
+    # descuentos por volumen, tarifas decrecientes en el tiempo, etc.
+    tarifas_propuestas:
+      # Descuento por volumen al cliente mayorista
+      descuento_volumen_mayorista:
+        - { sedes_min: 0,    sedes_max: 99,   descuento_pct: 0.00 }
+        - { sedes_min: 100,  sedes_max: 499,  descuento_pct: 0.05 }
+        - { sedes_min: 500,  sedes_max: 9999, descuento_pct: 0.10 }
+
+      # Decremento anual de tarifa ABAST (incentivo para que la admin
+      # renueve la concesión). 0 = tarifa fija.
+      decremento_abast_anual_pct: 0.00
+
+    # ------------------------------------------------------------------------
+    # 10. COMPROMISOS CONTRACTUALES DE LA OFERTA
+    # ------------------------------------------------------------------------
+    # Lo que prometemos y se incluirá en el PDF de oferta. Base del
+    # mecanismo de reequilibrio si la realidad se desvía.
+    compromisos:
+      cobertura_anio_5_pct: 0.40     # 40% de municipios conectados al año 5
+      cobertura_anio_10_pct: 0.80    # 80% al año 10
+      cobertura_anio_15_pct: 1.00    # 100% al año 15
+      sla_uptime_global: 0.999       # disponibilidad media red completa
+      mttr_promedio_horas: 4
+
+    # ------------------------------------------------------------------------
+    # 11. KPIs OBJETIVO (umbrales de defensa)
+    # ------------------------------------------------------------------------
+    # Si el escenario base no cumple estos umbrales, la oferta es difícil
+    # de defender — replantear parámetros antes de presentar.
+    kpis_objetivo:
+      npv_minimo: 50000000           # [PROPUESTA] NPV mínimo aceptable
+      irr_minimo: 0.08               # [PROPUESTA] 8% TIR mínima
+      payback_maximo_anios: 12       # [PROPUESTA]
+      ebitda_margin_minimo: 0.30     # [PROPUESTA] 30% margen EBITDA estacionario
+
+    # ------------------------------------------------------------------------
+    # 12. CONTINGENCIA Y RIESGOS
+    # ------------------------------------------------------------------------
+    contingencia:
+      reserva_imprevistos_pct: 0.05  # 5% del CAPEX como buffer de imprevistos
+      inflacion_anual: 0.02          # 2% anual aplicado a OPEX
+
+    # ------------------------------------------------------------------------
+    # 13. OUTPUTS GENERADOS
+    # ------------------------------------------------------------------------
+    outputs:
+      idioma: castellano             
+      formato_excel: xlsx
+      formato_documentos: pdf
+      generar_topologia_anillos: true
+      generar_topologia_completa: true
+      generar_oferta_tecnica_pdf: true
+      generar_oferta_economica_pdf: true
+      generar_resumen_ejecutivo: true
+      dpi_imagenes: 300
+
+  # ==========================================================================
+  # ESCENARIO OPTIMISTA — techo de potencial, defensa ante clawback
+  # ==========================================================================
+  # Sólo redefine lo que cambia respecto a base. El resto se hereda vía
+  # deep merge en load.load_decisiones().
+  optimista:
+    mayorista:
+      cuota_mercado:
+        alpha_objetivo: 0.50         # capturamos más mercado
+        anios_rampa: 6               # más rápido
+      overbooking: 25                # podemos overbookear más sin degradar SLA
+    compromisos:
+      cobertura_anio_5_pct: 0.50
+      cobertura_anio_10_pct: 0.90
+    contingencia:
+      inflacion_anual: 0.015         # entorno macro favorable
+
+  # ==========================================================================
+  # ESCENARIO PESIMISTA — peor caso defendible, base para reequilibrio
+  # ==========================================================================
+  pesimista:
+    mayorista:
+      cuota_mercado:
+        alpha_objetivo: 0.30         # cuota más conservadora
+        anios_rampa: 10              # más lento
+      overbooking: 15                # menos overbooking → más capacidad por cliente
+    despliegue:
+      km_max_anuales: 350            # despliegue más lento por restricciones de obra
+      sedes_max_anuales: 280
+    compromisos:
+      cobertura_anio_5_pct: 0.30
+      cobertura_anio_10_pct: 0.70
+      cobertura_anio_15_pct: 0.95
+    contingencia:
+      inflacion_anual: 0.03          # entorno macro adverso
+      reserva_imprevistos_pct: 0.08  # más buffer
