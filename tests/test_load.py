@@ -25,8 +25,8 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 
 # Si el Excel del profe es un único archivo con todas las hojas (caso real
 # observado), usar el mismo path para topology y parámetros.
-TOPOLOGY_FILE = DATA_DIR / "topologia_municipios.xlsx"
-PARAMETERS_FILE = DATA_DIR / "parametros_economicos.xlsx"
+TOPOLOGY_FILE = DATA_DIR / "Despliegue de REd Municipios 2026.xlsx"
+PARAMETERS_FILE = DATA_DIR / "Despliegue de REd Municipios 2026.xlsx"
 DECISIONES_FILE = DATA_DIR / "decisiones.yaml"
 
 

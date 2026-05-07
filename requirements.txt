@@ -1,6 +1,16 @@
-pandas
-openpyxl
-networkx
-matplotlib
-pyyaml
-pytest
+# Pipeline de cálculo
+pandas~=2.2
+numpy~=2.1
+networkx~=3.4
+openpyxl~=3.1
+pyyaml~=6.0
+numpy-financial~=1.0
+
+# Visualización
+matplotlib~=3.10
+
+# Generación de PDF (oferta técnica + económica)
+reportlab~=4.2
+
+# Tests
+pytest~=8.3

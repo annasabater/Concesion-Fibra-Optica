@@ -1,13 +1,32 @@
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
+.pytest_cache/
+
+# Virtualenv
 .venv/
 venv/
 env/
 .env
+
+# IDE
 .idea/
 .vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
-data/*.xlsx
-data/*.csv
-!data/.gitkeep
+
+# Outputs regenerables (versionar sólo .gitkeep)
+outputs/*
+!outputs/escenario_base/.gitkeep
+!outputs/escenario_optimista/.gitkeep
+!outputs/escenario_pesimista/.gitkeep
+
+# Archivos temporales de Excel (lock files que crea Office al abrir)
+~$*.xlsx
+~$*.xls
