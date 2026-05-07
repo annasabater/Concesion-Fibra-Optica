@@ -31,20 +31,27 @@ def traffic_abast(df_topology: pd.DataFrame, decisiones: dict) -> pd.DataFrame:
     """
 
 def traffic_mayorista(
-    df_topology: pd.DataFrame, 
-    decisiones: dict, 
+    df_topology: pd.DataFrame,
+    decisiones: dict,
     año: int = 20,
 ) -> pd.DataFrame:
     """Tráfico mayorista por municipio en el año dado.
-    
-    Fórmula:
-        hogares = hab / habitantes_por_hogar
-        cuota_α = _cuota(num_operadores, año, decisiones)
-        clientes = hogares × cuota_α
-        bw_mbps = clientes × bw_por_hogar_mbps / overbooking_mayorista
-    
-    Returns DataFrame: codigo, municipio, hogares, cuota_alpha, 
-                       clientes_mayorista, bw_mayorista_mbps
+
+    Fórmula (según pizarra del profesor 07/05/2026):
+        hogares_teoricos = hab / habitantes_por_hogar
+        cuota_operadores = _cuota(num_operadores, año, decisiones)
+        clientes = hogares_teoricos × cuota_operadores × penetracion_fibra_pct
+        bw_mbps = clientes × bw_por_hogar_mbps / overbooking
+
+    Donde:
+        - cuota_operadores: cómo nos repartimos el mercado entre los operadores
+          ya presentes (estrategia equilibrio/agresivo/rampa).
+        - penetracion_fibra_pct: % de hogares del municipio que efectivamente
+          contratan fibra (no todos los hogares contratan; algunos siguen
+          con cable, ADSL o sólo móvil).
+
+    Returns DataFrame: codigo, municipio, hogares_teoricos, cuota_operadores,
+                       penetracion_fibra, clientes_mayorista, bw_mayorista_mbps
     """
 
 def _cuota_alpha(num_operadores: int, año: int, decisiones: dict) -> float:
@@ -66,6 +73,10 @@ def aggregate_traffic_by_municipality(
                        bw_total_mbps
     """
 ```
+
+> **Importante**: la fórmula desglosa explícitamente **cuota entre operadores** y **penetración de fibra** como dos factores independientes. Antes de la pizarra del 07/05 las dos cosas estaban mezcladas en un único `alpha`. Esta separación permite analizar sensibilidad por cada factor por separado, y refleja la realidad: no todos los hogares contratan fibra (penetración) Y de los que contratan, sólo una fracción es nuestra (cuota).
+
+Las funciones `traffic_abast`, `_cuota_alpha` y `aggregate_traffic_by_municipality` no cambian respecto a la versión anterior del prompt.
 
 ## Validaciones
 

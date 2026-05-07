@@ -168,18 +168,19 @@ escenarios:
     # resto hereda de base
 ```
 
-## Flujo de cálculo (10 pasos)
+## Flujo de cálculo (11 pasos)
 
 1. **Carga de datos** (`load.py`): leer Excel, validar, normalizar
 2. **Topología** (`topology.py`): construir grafo NetworkX dirigido con A900 como root
 3. **Tráfico ABAST** (`traffic.py`): por municipio = `sedes_abast × 100 Mbps`
-4. **Tráfico mayorista** (`traffic.py`): por municipio = `(hab/2.5) × α(t) × 100 Mbps / overbooking`
-5. **Tráfico acumulado** (`equipment.py`): BFS desde las hojas hacia A900, sumando
-6. **Selección de equipo** (`equipment.py`): según tráfico acumulado, elegir 10p / 20p / 40p / MPLS / óptico 40λ
-7. **CAPEX** (`capex.py`): obra civil + altas + equipos, agregado por anillo y por año según plan
-8. **OPEX** (`opex.py`): mantenimiento + impuestos + costes ventas + generales, escalando con red activa
-9. **Ingresos** (`revenue.py`): ABAST + mayorista por año, según conexión gradual
-10. **Cuenta de resultados** (`pnl.py`): EBITDA, resultado neto, KPIs (NPV, IRR, payback) a 20 años
+4. **Tráfico mayorista** (`traffic.py`): por municipio = `(hab/hab_por_hogar) × cuota_operadores × penetracion_fibra × 100 Mbps / overbooking`
+5. **Geomarketing y viabilidad** (`geomarketing.py`): análisis de viabilidad por municipio, orden de despliegue, estimación PYMEs, decisión armario/local
+6. **Tráfico acumulado** (`equipment.py`): BFS desde las hojas hacia A900, sumando
+7. **Selección de equipo** (`equipment.py`): según tráfico acumulado, elegir 10p / 20p / 40p / MPLS / óptico 40λ
+8. **CAPEX** (`capex.py`): obra civil + altas + equipos, agregado por anillo y por año según plan
+9. **OPEX** (`opex.py`): mantenimiento + impuestos + costes ventas + generales, escalando con red activa
+10. **Ingresos** (`revenue.py`): ABAST + mayorista por año, según conexión gradual
+11. **Cuenta de resultados** (`pnl.py`): EBITDA, resultado neto, KPIs (NPV, IRR, payback) a 20 años
 
 ## Decisiones del grupo (las palancas variables)
 
@@ -232,6 +233,7 @@ proyecto-abast/
 │   ├── load.py
 │   ├── topology.py
 │   ├── traffic.py
+│   ├── geomarketing.py
 │   ├── equipment.py
 │   ├── capex.py
 │   ├── opex.py

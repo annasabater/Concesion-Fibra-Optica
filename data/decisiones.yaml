@@ -45,6 +45,13 @@ escenarios:
         alpha_objetivo: 0.40         # [PROPUESTA] cuota objetivo en régimen estacionario
         anios_rampa: 8               # [PROPUESTA] años para alcanzar la cuota objetivo
 
+      # Penetración de fibra: % de hogares del municipio que efectivamente
+      # contratan fibra de cualquier operador. No todos los hogares contratan
+      # (cable, ADSL o sólo móvil siguen existiendo). Factor independiente de
+      # la cuota entre operadores — pizarra del profesor del 07/05/2026.
+      # Típico: 70–90% urbano, 30–50% rural.
+      penetracion_fibra_pct: 0.70    # [PROPUESTA] mix urbano/rural
+
       # Producto comercial mayorista para clientes residenciales (vía operador)
       bw_por_hogar_mbps: 100         # ancho de banda comercial por hogar
       habitantes_por_hogar: 2.5      # ratio INE España (audio del profe)
@@ -243,6 +250,45 @@ escenarios:
       generar_resumen_ejecutivo: true
       dpi_imagenes: 300
 
+    # ------------------------------------------------------------------------
+    # 14. GEOMARKETING (TAREA 5 — análisis de viabilidad por municipio)
+    # ------------------------------------------------------------------------
+    # Estudio de marketing por municipio que decide viabilidad y orden de
+    # despliegue. La cobertura es obligatoria al 100%, así que el flag de
+    # viabilidad sirve para documentar (no para excluir) y para priorizar.
+    geomarketing:
+
+      # Estimación de PYMEs como segmento adicional (no sólo residencial)
+      modelo_pymes:
+        habitantes_por_pyme: 50          # ratio para estimar PYMEs por municipio
+        bw_por_pyme_mbps: 300
+        penetracion_pyme_pct: 0.40       # cuota de PYMEs que contratan fibra empresa
+
+      # Criterios de viabilidad por municipio (filtros para decidir qué munis son atractivos)
+      viabilidad_minima:
+        ingresos_anuales_min_eur: 5000   # umbral mínimo de ingresos anuales por municipio para considerarlo viable
+        payback_municipal_max_anios: 12  # un muni no es viable si su payback individual supera este umbral
+
+      # Orden y prioridad del despliegue (estudio de marketing)
+      prioridad_despliegue:
+        criterio: ingresos_potenciales_descendente   # ingresos_potenciales_descendente | sedes_descendente | hab_descendente
+        arrancar_por_muni: A900                       # municipio inicial de despliegue (defecto: el más grande)
+
+    # ------------------------------------------------------------------------
+    # 15. INFRAESTRUCTURA DE ACCESO (punto de acceso por municipio)
+    # ------------------------------------------------------------------------
+    # Decisión física de instalación del punto de acceso en cada municipio:
+    # armario de calle (vía pública, requiere licencia ayuntamiento) vs.
+    # local cerrado (PoP indoor, sin permiso pero con OPEX recurrente).
+    infraestructura_acceso:
+      tipo_punto_acceso: armario_calle   # armario_calle | local_cerrado | mixto
+      # Armario de calle: ocupación vía pública, requiere licencia ayuntamiento
+      coste_licencia_armario_eur: 5000   # coste extra por permiso ayuntamiento (one-shot por muni)
+      # Local cerrado: alquiler de PoP indoor, sin permiso pero con OPEX recurrente
+      coste_alquiler_local_anual_eur: 8000
+      # Si tipo=mixto: armario en muni rural pequeño, local en urbanos grandes
+      umbral_hab_para_local_cerrado: 20000
+
   # ==========================================================================
   # ESCENARIO OPTIMISTA — techo de potencial, defensa ante clawback
   # ==========================================================================
@@ -253,6 +299,7 @@ escenarios:
       cuota_mercado:
         alpha_objetivo: 0.50         # capturamos más mercado
         anios_rampa: 6               # más rápido
+      penetracion_fibra_pct: 0.85    # entorno macro favorable, mayor adopción
       overbooking: 25                # podemos overbookear más sin degradar SLA
     compromisos:
       cobertura_anio_5_pct: 0.50
@@ -268,6 +315,7 @@ escenarios:
       cuota_mercado:
         alpha_objetivo: 0.30         # cuota más conservadora
         anios_rampa: 10              # más lento
+      penetracion_fibra_pct: 0.55    # entorno adverso, menor adopción residencial
       overbooking: 15                # menos overbooking → más capacidad por cliente
     despliegue:
       km_max_anuales: 350            # despliegue más lento por restricciones de obra
