@@ -1,0 +1,15 @@
+anillo,tipo,n_nodos,n_munis_cubiertos,n_sedes_abast,total_hab,km_existing,km_acceso_construido
+A1,agregacion,12,12,1014,2540000,,0.0
+A2,agregacion,13,795,2989,3920900,,4740.0
+A3,agregacion,9,13,402,1260000,,20.0
+A4,agregacion,9,13,277,760000,,20.0
+A5,agregacion,9,13,252,560000,,20.0
+A6,agregacion,9,13,182,350000,,20.0
+A7,agregacion,9,10,148,270000,,5.0
+A8,agregacion,9,9,130,235000,,0.0
+A9,agregacion,9,9,135,245000,,0.0
+A10,agregacion,9,9,150,275000,,0.0
+A11,agregacion,5,5,90,175000,,0.0
+T1,troncal,4,833,3876,6170900,,4760.0
+T2,troncal,4,837,3776,5700900,,4760.0
+T3,troncal,4,842,3816,5640900,,4785.0
