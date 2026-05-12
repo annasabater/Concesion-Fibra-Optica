@@ -11,6 +11,7 @@ Funciones públicas:
     get_downstream_nodes(g, node) -> set[str]
     resolve_aggregation_ring(g, node) -> set[str]
     stats_by_ring(g) -> pd.DataFrame
+    traffic_by_ring(g, df_traffic) -> pd.DataFrame
     draw_rings_only(g, output_path) -> None
     draw_full_topology(g, output_path) -> None
 """
@@ -311,6 +312,103 @@ def stats_by_ring(g: nx.DiGraph) -> pd.DataFrame:
         })
 
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# traffic_by_ring
+# ---------------------------------------------------------------------------
+
+def traffic_by_ring(
+    g: nx.DiGraph,
+    df_traffic: pd.DataFrame,
+) -> pd.DataFrame:
+    """Tráfico ABAST y mayorista agregado por anillo (14 filas).
+
+    Para anillos de agregación (A1-A11): suma el tráfico de todos los
+    municipios de acceso que resuelven a ese anillo.
+
+    Para anillos troncales (T1-T3): suma el tráfico de los anillos de
+    agregación cuyos gateways pertenecen a ese troncal. A1 y A2 cuelgan
+    directamente de A900 (que está en los 3 troncales) y no atraviesan
+    ningún segmento troncal, por lo que no se suman a T1/T2/T3.
+
+    Args:
+        g: grafo de `build_graph`.
+        df_traffic: salida de `traffic.compute_traffic` con columnas
+            municipio, bw_abast_mbps, bw_mayorista_mbps.
+
+    Returns:
+        DataFrame: anillo, tipo, bw_abast_gbps, bw_mayorista_gbps,
+        bw_total_gbps.
+    """
+    # Índice municipio → tráfico
+    traffic_idx = df_traffic.set_index("municipio")
+
+    def _mbps(node: str, col: str) -> float:
+        try:
+            return float(traffic_idx.loc[node, col])
+        except KeyError:
+            return 0.0
+
+    # Pre-resolver anillos de acceso (igual que en stats_by_ring)
+    access_to_rings: dict[str, set[str]] = {}
+    for n, d in g.nodes(data=True):
+        if d["tier"] == "acceso":
+            access_to_rings[n] = resolve_aggregation_ring(g, n)
+
+    rows: list[dict] = []
+
+    # ---- tráfico por anillo de agregación ----
+    agg_bw: dict[str, tuple[float, float]] = {}  # ring → (abast, mayo)
+    for ring in _AGG_RINGS:
+        munis = {n for n, rings in access_to_rings.items() if ring in rings}
+        abast = sum(_mbps(m, "bw_abast_mbps") for m in munis)
+        mayo = sum(_mbps(m, "bw_mayorista_mbps") for m in munis)
+        agg_bw[ring] = (abast, mayo)
+        rows.append({
+            "anillo": ring,
+            "tipo": "agregacion",
+            "bw_abast_gbps": round(abast / 1000, 2),
+            "bw_mayorista_gbps": round(mayo / 1000, 2),
+            "bw_total_gbps": round((abast + mayo) / 1000, 2),
+        })
+
+    # ---- tráfico por anillo troncal ----
+    # Para cada troncal, sumar los anillos de agregación cuyos gateways son
+    # nodos del troncal (excluyendo A900, que es el root compartido).
+    for tring in _TRO_RINGS:
+        tro_nodes = {
+            n for n, d in g.nodes(data=True)
+            if tring in d["anillos_troncal"] and n != ROOT_NODE
+        }
+        # Anillos de agregación que tienen gateway en este troncal.
+        agg_rings_under: set[str] = set()
+        for n in tro_nodes:
+            agg_rings_under |= g.nodes[n]["anillos_agregacion"]
+
+        abast = sum(agg_bw[ar][0] for ar in agg_rings_under)
+        mayo = sum(agg_bw[ar][1] for ar in agg_rings_under)
+        rows.append({
+            "anillo": tring,
+            "tipo": "troncal",
+            "bw_abast_gbps": round(abast / 1000, 2),
+            "bw_mayorista_gbps": round(mayo / 1000, 2),
+            "bw_total_gbps": round((abast + mayo) / 1000, 2),
+        })
+
+    # Ordenar: A1..A11, T1, T2, T3
+    order = {r: i for i, r in enumerate(list(_AGG_RINGS) + list(_TRO_RINGS))}
+    df = pd.DataFrame(rows).sort_values(
+        "anillo", key=lambda s: s.map(order)
+    ).reset_index(drop=True)
+
+    logger.info(
+        "traffic_by_ring: BW total territorio = %.1f Gbps (ABAST=%.1f, Mayo=%.1f)",
+        df["bw_total_gbps"].sum(),
+        df["bw_abast_gbps"].sum(),
+        df["bw_mayorista_gbps"].sum(),
+    )
+    return df
 
 
 # ---------------------------------------------------------------------------

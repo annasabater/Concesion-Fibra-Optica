@@ -65,19 +65,62 @@ _COLOR_T_RINGS = {
 
 
 # ---------------------------------------------------------------------------
-# Orden de los pétalos: A1..A11 en sentido horario desde arriba.
-# Orden numérico → las etiquetas están donde el ojo las espera.
+# Orden de los pétalos: agrupados por anillo troncal del gateway.
+# A1, A2 cuelgan directamente de A900 (no tienen T propia) → arriba.
+# Después: lóbulo T1, lóbulo T2, lóbulo T3 contiguos, en sentido horario.
+# Así el lector ve de un vistazo qué A_i comparten anillo troncal.
 # ---------------------------------------------------------------------------
 
-_PETAL_ORDER: tuple[str, ...] = (
-    "A1", "A2", "A3", "A4", "A5", "A6",
-    "A7", "A8", "A9", "A10", "A11",
-)
-assert len(_PETAL_ORDER) == 11
+_T_GROUP_ORDER: tuple[str, ...] = ("", "T1", "T2", "T3")
 
 _R_PETAL_CENTER = 6.5
 _R_CLUSTER = 1.6
 _R_PETAL_LABEL = _R_PETAL_CENTER + _R_CLUSTER + 0.9
+
+
+def _compute_petal_order(
+    g: nx.DiGraph,
+) -> tuple[list[str], dict[str, str]]:
+    """Devuelve ``(orden, ring_to_t)``.
+
+    - ``orden``: lista de anillos de agregación (A1..A11) ordenados de
+      forma que los que comparten anillo troncal queden contiguos.
+    - ``ring_to_t``: mapeo anillo_agregación → anillo troncal del
+      gateway correspondiente (``""`` si cuelga directamente de A900,
+      como A1 y A2).
+    """
+    rings: set[str] = set()
+    for _, d in g.nodes(data=True):
+        rings.update(d.get("anillos_agregacion", ()))
+
+    ring_to_t: dict[str, str] = {}
+    for ring in rings:
+        gw = next(
+            (
+                n for n, d in g.nodes(data=True)
+                if ring in d.get("anillos_agregacion", ())
+                and d.get("anillos_troncal")
+                and n != ROOT_NODE
+            ),
+            None,
+        )
+        if gw is None:
+            ring_to_t[ring] = ""  # cuelga de A900 directamente (A1, A2)
+        else:
+            t_rings = sorted(g.nodes[gw]["anillos_troncal"])
+            ring_to_t[ring] = t_rings[0] if t_rings else ""
+
+    group_rank = {t: i for i, t in enumerate(_T_GROUP_ORDER)}
+
+    def _sort_key(ring: str) -> tuple[int, int]:
+        try:
+            num = int(ring.lstrip("A"))
+        except ValueError:
+            num = 0
+        return (group_rank.get(ring_to_t[ring], 99), num)
+
+    ordered = sorted(rings, key=_sort_key)
+    return ordered, ring_to_t
 
 
 # ---------------------------------------------------------------------------
@@ -140,15 +183,17 @@ def _catmull_rom_closed(
 # ---------------------------------------------------------------------------
 
 def _layout_petals(g: nx.DiGraph) -> dict[str, tuple[float, float]]:
-    """A900 al centro, 11 pétalos en orden _PETAL_ORDER.
+    """A900 al centro, pétalos agrupados por anillo troncal del gateway.
 
     Dentro de cada cluster: el gateway (nodo con anillo troncal) se
     coloca en el lado interno (mirando hacia A900), de forma que las
     curvas de los anillos T_i pasen lo más limpiamente posible.
     """
     pos: dict[str, tuple[float, float]] = {ROOT_NODE: (0.0, 0.0)}
-    for i, ring in enumerate(_PETAL_ORDER):
-        angle = 2 * math.pi * i / len(_PETAL_ORDER) - math.pi / 2
+    petal_order, _ = _compute_petal_order(g)
+    n_petals = len(petal_order)
+    for i, ring in enumerate(petal_order):
+        angle = 2 * math.pi * i / n_petals - math.pi / 2
         cx = _R_PETAL_CENTER * math.cos(angle)
         cy = _R_PETAL_CENTER * math.sin(angle)
 
@@ -196,8 +241,8 @@ def _layout_petals(g: nx.DiGraph) -> dict[str, tuple[float, float]]:
     return pos
 
 
-def _petal_label_pos(i: int) -> tuple[float, float]:
-    angle = 2 * math.pi * i / len(_PETAL_ORDER) - math.pi / 2
+def _petal_label_pos(i: int, n_petals: int) -> tuple[float, float]:
+    angle = 2 * math.pi * i / n_petals - math.pi / 2
     return (_R_PETAL_LABEL * math.cos(angle), _R_PETAL_LABEL * math.sin(angle))
 
 
@@ -281,14 +326,20 @@ def draw_rings_only(g: nx.DiGraph, output_path: Path) -> tuple[Path, Path]:
     )
 
     # ---- Etiquetas A_i sobre cada cluster ----
-    for i, ring in enumerate(_PETAL_ORDER):
-        lx, ly = _petal_label_pos(i)
+    # Coloreadas según el anillo troncal del gateway (T1/T2/T3) para que
+    # la agrupación visual coincida con la agrupación lógica.
+    petal_order, ring_to_t = _compute_petal_order(g)
+    n_petals = len(petal_order)
+    for i, ring in enumerate(petal_order):
+        lx, ly = _petal_label_pos(i, n_petals)
+        t_ring = ring_to_t.get(ring, "")
+        label_color = _COLOR_T_RINGS.get(t_ring, _COLOR_AGGREGATION)
         ax.text(
             lx, ly, ring,
-            fontsize=14, fontweight="bold", color=_COLOR_AGGREGATION,
+            fontsize=14, fontweight="bold", color=label_color,
             ha="center", va="center",
             bbox=dict(
-                facecolor="white", edgecolor=_COLOR_AGGREGATION, linewidth=1.4,
+                facecolor="white", edgecolor=label_color, linewidth=1.6,
                 boxstyle="round,pad=0.32", alpha=0.95,
             ),
             zorder=9,
@@ -878,3 +929,71 @@ def generate_diagrams(
     written.extend(draw_ring_detail(graph, "A6",  img_dir / "topologia_detalle_A6"))
     written.extend(draw_ring_detail(graph, "A11", img_dir / "topologia_detalle_A11"))
     return written
+
+
+# ---------------------------------------------------------------------------
+# plot_traffic_by_ring
+# ---------------------------------------------------------------------------
+
+def plot_traffic_by_ring(
+    df_traffic_ring: "pd.DataFrame",
+    output_path: Path,
+) -> tuple[Path, Path]:
+    """Gràfic de barres apilades: tràfic ABAST + Mayorista per anell.
+
+    Args:
+        df_traffic_ring: sortida de `topology.traffic_by_ring`.
+        output_path: ruta sense extensió (es generen .png i .svg).
+
+    Returns:
+        Tuple (png_path, svg_path).
+    """
+    import pandas as pd  # noqa: PLC0415 (import local per evitar cicle)
+
+    df = df_traffic_ring.copy()
+
+    # Separar agregació i troncal per colorar diferent
+    agg = df[df["tipo"] == "agregacion"].copy()
+    tro = df[df["tipo"] == "troncal"].copy()
+
+    fig, axes = plt.subplots(
+        1, 2,
+        figsize=(16, 6),
+        gridspec_kw={"width_ratios": [11, 3]},
+        sharey=False,
+    )
+
+    def _bars(ax: "plt.Axes", data: "pd.DataFrame", title: str) -> None:
+        x = range(len(data))
+        ax.bar(x, data["bw_abast_gbps"],
+               label="ABAST (autoprestació)", color="#2874a6", zorder=3)
+        ax.bar(x, data["bw_mayorista_gbps"],
+               bottom=data["bw_abast_gbps"],
+               label="Majorista (resi + PYME)", color="#5dade2", zorder=3)
+        ax.set_xticks(list(x))
+        ax.set_xticklabels(data["anillo"].tolist(), fontsize=9)
+        ax.set_ylabel("Tràfic (Gbps)")
+        ax.set_title(title, fontsize=11, fontweight="bold")
+        ax.yaxis.grid(True, linestyle="--", alpha=0.5, zorder=0)
+        ax.set_axisbelow(True)
+        for i, row in enumerate(data.itertuples()):
+            total = row.bw_total_gbps
+            if total > 0:
+                ax.text(i, total + total * 0.02, f"{total:.0f}",
+                        ha="center", va="bottom", fontsize=7, fontweight="bold")
+
+    _bars(axes[0], agg, "Anells d'agregació (A1–A11)")
+    _bars(axes[1], tro, "Anells troncals (T1–T3)")
+
+    # Llegenda única
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=2,
+               bbox_to_anchor=(0.5, 1.02), frameon=False, fontsize=10)
+
+    fig.suptitle(
+        "Tràfic per anell — any 20 (Gbps)",
+        fontsize=13, fontweight="bold", y=1.06,
+    )
+    fig.tight_layout()
+
+    return _save_dual(fig, output_path)

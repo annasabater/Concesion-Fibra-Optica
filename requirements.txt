@@ -11,6 +11,7 @@ matplotlib~=3.10
 
 # Generación de PDF (oferta técnica + económica)
 reportlab~=4.2
+python-docx~=1.2
 
 # Tests
 pytest~=8.3
