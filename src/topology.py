@@ -413,6 +413,9 @@ def traffic_by_ring(
     # Cada multiplexor: 40 lambdes × 10 Gbps = 400 Gbps de capacitat
     # L'anell és bidireccional però dimensionem pel tràfic total (cas pitjor)
     cap_per_mux_gbps = 400.0
+    lambdes_per_mux = 40
+    bw_per_lambda_gbps = 10.0
+
     df["n_multiplexors"] = df["bw_total_gbps"].apply(
         lambda bw: max(1, math.ceil(bw / cap_per_mux_gbps))
     )
@@ -421,14 +424,25 @@ def traffic_by_ring(
     capex_mux = 60_000.0
     df["capex_optic_anell"] = df["n_multiplexors"] * 2 * capex_mux
 
+    # Lambdes: cada lambda transporta 10 Gbps; cada multiplexor té 40 lambdes
+    df["lambdes_necessaries"] = df["bw_total_gbps"].apply(
+        lambda bw: math.ceil(bw / bw_per_lambda_gbps)
+    )
+    df["lambdes_totals"] = df["n_multiplexors"] * lambdes_per_mux
+    df["lambdes_lliures"] = df["lambdes_totals"] - df["lambdes_necessaries"]
+
     logger.info(
         "traffic_by_ring: BW total territorio = %.1f Gbps (ABAST=%.1f, Mayo=%.1f) | "
-        "Multiplexors totals = %d | CAPEX optic = %.2f M€",
+        "Multiplexors totals = %d | CAPEX optic = %.2f M€ | "
+        "Lambdes usades/totals = %d/%d (lliures: %d)",
         df["bw_total_gbps"].sum(),
         df["bw_abast_gbps"].sum(),
         df["bw_mayorista_gbps"].sum(),
         df["n_multiplexors"].sum(),
         df["capex_optic_anell"].sum() / 1e6,
+        df["lambdes_necessaries"].sum(),
+        df["lambdes_totals"].sum(),
+        df["lambdes_lliures"].sum(),
     )
     return df
 
