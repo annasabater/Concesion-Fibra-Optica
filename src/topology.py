@@ -361,9 +361,16 @@ def traffic_by_ring(
     # ---- tráfico por anillo de agregación ----
     agg_bw: dict[str, tuple[float, float]] = {}  # ring → (abast, mayo)
     for ring in _AGG_RINGS:
+        # Municipios de acceso que resuelven a este anillo
         munis = {n for n, rings in access_to_rings.items() if ring in rings}
-        abast = sum(_mbps(m, "bw_abast_mbps") for m in munis)
-        mayo = sum(_mbps(m, "bw_mayorista_mbps") for m in munis)
+        # Nodos miembros del propio anillo.
+        # A900 pertenece a A1 y A2, pero se cuenta solo en A1 para no doblar sedes.
+        members = {n for n, d in g.nodes(data=True)
+                   if ring in d["anillos_agregacion"]
+                   and (n != ROOT_NODE or ring == "A1")}
+        todos = munis | members
+        abast = sum(_mbps(m, "bw_abast_mbps") for m in todos)
+        mayo = sum(_mbps(m, "bw_mayorista_mbps") for m in todos)
         agg_bw[ring] = (abast, mayo)
         rows.append({
             "anillo": ring,
