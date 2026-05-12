@@ -21,11 +21,8 @@ Thumbs.db
 # Logs
 *.log
 
-# Outputs regenerables (versionar sólo .gitkeep)
-outputs/*
-!outputs/escenario_base/.gitkeep
-!outputs/escenario_optimista/.gitkeep
-!outputs/escenario_pesimista/.gitkeep
+# Archivos temporales grandes (no versionar binarios pesados de matplotlib)
+outputs/**/*.pdf
 
 # Archivos temporales de Excel (lock files que crea Office al abrir)
 ~$*.xlsx

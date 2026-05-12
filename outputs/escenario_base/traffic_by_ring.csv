@@ -1,0 +1,15 @@
+anillo,tipo,bw_abast_gbps,bw_mayorista_gbps,bw_total_gbps
+A1,agregacion,0.0,0.0,0.0
+A2,agregacion,206.0,918.9,1124.9
+A3,agregacion,3.2,22.4,25.6
+A4,agregacion,3.2,22.4,25.6
+A5,agregacion,3.2,22.4,25.6
+A6,agregacion,3.2,22.4,25.6
+A7,agregacion,0.8,5.6,6.4
+A8,agregacion,0.0,0.0,0.0
+A9,agregacion,0.0,0.0,0.0
+A10,agregacion,0.0,0.0,0.0
+A11,agregacion,0.0,0.0,0.0
+T1,troncal,3.2,22.4,25.6
+T2,troncal,3.2,22.4,25.6
+T3,troncal,7.2,50.4,57.6
