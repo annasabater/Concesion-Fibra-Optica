@@ -241,13 +241,16 @@ def select_equipment(
         n_links = int(r["n_downstream_links"])
 
         if tier == "acceso":
-            # Para acceso, sedes_abast no está en df_cumulative — se calcula
-            # más arriba en `assign_equipment` que lo inyecta. Aquí
-            # interpretamos el bw_propio como un proxy del tamaño y usamos
-            # n_links sólo si tiene niños en el árbol; si es hoja, sólo
-            # equipo cliente para sus sedes (capex se suma en assign_equipment
-            # que tiene acceso a sedes_abast).
-            equipo, n_uds, capex_eq = ("equipo_cliente", 0, 0.0)
+            # Switch municipal: 1 port per seu + 1 majorista + 1 uplink, ×1.2
+            sedes = int(r.get("sedes_abast", 0))
+            if sedes > 0:
+                ports_dim = math.ceil((sedes + 2) * factor_creixement)
+                equipo, n_uds, capex_eq = _pick_switch_municipal(
+                    ports_dim, u_10_20, u_20_40, u_40_mpls,
+                    p_10p, p_20p, p_40p,
+                )
+            else:
+                equipo, n_uds, capex_eq = ("sense_switch", 0, 0.0)
             capex_chasis = 0.0
             capex_extra = 0.0
 
@@ -287,6 +290,23 @@ def select_equipment(
 
     df = pd.DataFrame(rows).sort_values("codigo").reset_index(drop=True)
     return df
+
+
+def _pick_switch_municipal(
+    ports_dim: int,
+    u_10_20: int, u_20_40: int, u_40_mpls: int,
+    p_10p: float, p_20p: float, p_40p: float,
+) -> tuple[str, int, float]:
+    """Switch local al municipi: tria el més petit que cobreix els ports.
+
+    ports_dim = (sedes_abast + 1 majorista + 1 uplink) × 1.2 (ja aplicat).
+    No s'usa MPLS aquí — màxim 40p per municipi d'accés.
+    """
+    if ports_dim <= u_10_20:
+        return "switch_10p", 1, p_10p
+    if ports_dim <= u_20_40:
+        return "switch_20p", 1, p_20p
+    return "switch_40p", 1, p_40p
 
 
 def _pick_aggregation(
@@ -390,18 +410,24 @@ def assign_equipment(
         raise ValueError("`parametros` es obligatorio para calcular CAPEX.")
 
     df_cum = cumulative_traffic(graph, traffic)
+
+    # Inyectar sedes_abast ANTES de select_equipment (necesario para switch municipal)
+    sedes_by_muni = {n: graph.nodes[n].get("sedes_abast", 0) for n in graph.nodes()}
+    df_cum["sedes_abast"] = df_cum["municipio"].map(sedes_by_muni).astype(int)
+
     df_eq = select_equipment(df_cum, decisiones, parametros)
 
-    # Inyectar sedes_abast por nodo y CAPEX de equipo cliente (acceso).
+    # CAPEX equip client (CPE per seu) — calculat des de sedes_by_muni
     p_cliente = float(parametros["capex"]["equipo_cliente"])
-    sedes_by_muni = {n: graph.nodes[n].get("sedes_abast", 0) for n in graph.nodes()}
     df_eq["sedes_abast"] = df_eq["municipio"].map(sedes_by_muni).astype(int)
     df_eq["equipo_cliente_capex"] = df_eq["sedes_abast"].astype(float) * p_cliente
     df_eq["capex_total_nodo"] = (
         df_eq["capex_total_nodo"] + df_eq["equipo_cliente_capex"]
     )
 
-    df = df_cum.merge(
+    # Merge — excloure sedes_abast de df_cum per evitar duplicat _x/_y
+    df_cum_merge = df_cum.drop(columns=["sedes_abast"], errors="ignore")
+    df = df_cum_merge.merge(
         df_eq[[
             "codigo", "equipo_principal", "n_unidades",
             "capex_equipo", "capex_chasis", "capex_extra",
