@@ -409,11 +409,26 @@ def traffic_by_ring(
         "anillo", key=lambda s: s.map(order)
     ).reset_index(drop=True)
 
+    # ---- Multiplexadors òptics DWDM per anell ----
+    # Cada multiplexor: 40 lambdes × 10 Gbps = 400 Gbps de capacitat
+    # L'anell és bidireccional però dimensionem pel tràfic total (cas pitjor)
+    cap_per_mux_gbps = 400.0
+    df["n_multiplexors"] = df["bw_total_gbps"].apply(
+        lambda bw: max(1, math.ceil(bw / cap_per_mux_gbps))
+    )
+    # Cost per multiplexor = equipo_troncal_optico_40l (60.000 €)
+    # Es posen 2 per anell (un a cada extrem de l'anell, com a mínim)
+    capex_mux = 60_000.0
+    df["capex_optic_anell"] = df["n_multiplexors"] * 2 * capex_mux
+
     logger.info(
-        "traffic_by_ring: BW total territorio = %.1f Gbps (ABAST=%.1f, Mayo=%.1f)",
+        "traffic_by_ring: BW total territorio = %.1f Gbps (ABAST=%.1f, Mayo=%.1f) | "
+        "Multiplexors totals = %d | CAPEX optic = %.2f M€",
         df["bw_total_gbps"].sum(),
         df["bw_abast_gbps"].sum(),
         df["bw_mayorista_gbps"].sum(),
+        df["n_multiplexors"].sum(),
+        df["capex_optic_anell"].sum() / 1e6,
     )
     return df
 
