@@ -292,6 +292,50 @@ escenarios:
       # Si tipo=mixto: armario en muni rural pequeño, local en urbanos grandes
       umbral_hab_para_local_cerrado: 20000
 
+    # ------------------------------------------------------------------------
+    # 16. INFRAESTRUCTURA FÍSICA DE NODES (LOCAL TÈCNIC)
+    # ------------------------------------------------------------------------
+    # Els nodes d'accés caben en un armari de carrer.
+    # Els nodes d'agregació i troncal concentren tot l'equipament (xassís,
+    # switches, mux DWDM, ODF) i requereixen un LOCAL TÈCNIC amb:
+    #   - Bateries / SAI: backup d'alimentació per complir SLA 99.9%
+    #   - Repartidors ODF: terminació i parchejo de la fibra òptica
+    #   - Climatització: refrigeració de l'equipament actiu
+    #   - Habilitació de local: obra civil lleugera o adaptació d'espai existent
+    #
+    # Estratègia: concentrar tot l'equipament el més a prop possible del node
+    # d'agregació (menys locals → menys CAPEX i OPEX de manteniment).
+    # [PROPOSTA] — validar amb el professor la partida de pressupost.
+    infraestructura_nodes:
+
+      # Nodes d'accés (799 municipis): armari de carrer
+      acceso:
+        tipus: armari_carrer
+        capex_total_eur: 5000          # llicència ajuntament + instal·lació
+        opex_anual_eur: 200            # manteniment preventiu anual
+
+      # Nodes d'agregació (91 nodes, A800–A890): local tècnic
+      # Concentren tot el tràfic dels municipis d'accés de l'anell.
+      agregacio:
+        tipus: local_tecnic
+        capex_habilitacio_eur: 30000   # obra civil lleugera / adaptació del local
+        capex_bateries_sai_eur: 12000  # SAI + bateries 4h backup (SLA 99.9%)
+        capex_odf_repartidors_eur: 8000  # ODF + patch panels fibra
+        capex_climatitzacio_eur: 5000  # clima + ventilació forçada
+        capex_total_eur: 55000         # [PROPOSTA] suma de totes les partides
+        opex_anual_eur: 3000           # electricitat + manteniment preventiu
+
+      # Nodes troncals (9 nodes, A891–A899, excl. A900): local tècnic gran
+      # Agreguen tràfic de múltiples anells; requereixen més redundància.
+      troncal:
+        tipus: local_tecnic_gran
+        capex_habilitacio_eur: 60000   # local més gran, doble rack
+        capex_bateries_sai_eur: 25000  # SAI + bateries 8h backup (crítics)
+        capex_odf_repartidors_eur: 15000
+        capex_climatitzacio_eur: 10000
+        capex_total_eur: 110000        # [PROPOSTA]
+        opex_anual_eur: 8000
+
   # ==========================================================================
   # ESCENARIO OPTIMISTA — techo de potencial, defensa ante clawback
   # ==========================================================================

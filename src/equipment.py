@@ -231,6 +231,18 @@ def select_equipment(
     # ---- DC A900 ----
     dc_capex_extra = float(decisiones.get("datacenter_a900", {}).get("capex_extra", 0))
 
+    # ---- Local tècnic per tier (infraestructura_nodes) ----
+    infra_cfg = decisiones.get("infraestructura_nodes", {})
+    capex_local_acceso = float(
+        infra_cfg.get("acceso", {}).get("capex_total_eur", 5_000)
+    )
+    capex_local_agreg = float(
+        infra_cfg.get("agregacio", {}).get("capex_total_eur", 55_000)
+    )
+    capex_local_troncal = float(
+        infra_cfg.get("troncal", {}).get("capex_total_eur", 110_000)
+    )
+
     # ---- topology de soporte para sedes_abast (no viene en df_cumulative) ----
     rows = []
     for _, r in df_cumulative.iterrows():
@@ -253,6 +265,8 @@ def select_equipment(
                 equipo, n_uds, capex_eq = ("sense_switch", 0, 0.0)
             capex_chasis = 0.0
             capex_extra = 0.0
+            # Armari de carrer només als municipis que tenen seus
+            capex_local = capex_local_acceso if sedes > 0 else 0.0
 
         elif tier == "agregacion":
             # Aplicar factor de creixement als dos criteris de selecció
@@ -264,6 +278,8 @@ def select_equipment(
             )
             capex_chasis = p_chasis
             capex_extra = 0.0
+            # Local tècnic: bateries, repartidors ODF, climatització
+            capex_local = capex_local_agreg
 
         elif tier == "troncal":
             equipo = "mpls + optico_40l"
@@ -271,11 +287,13 @@ def select_equipment(
             capex_eq = p_mpls + p_optico
             capex_chasis = p_chasis
             capex_extra = dc_capex_extra if muni == ROOT_NODE else 0.0
+            # A900 ja té datacenter_a900; la resta de troncals → local tècnic gran
+            capex_local = 0.0 if muni == ROOT_NODE else capex_local_troncal
 
         else:
             raise ValueError(f"Tier desconocido para {muni!r}: {tier!r}")
 
-        capex_total = capex_eq + capex_chasis + capex_extra
+        capex_total = capex_eq + capex_chasis + capex_extra + capex_local
         rows.append({
             "codigo": codigo,
             "municipio": muni,
@@ -285,6 +303,7 @@ def select_equipment(
             "capex_equipo": capex_eq,
             "capex_chasis": capex_chasis,
             "capex_extra": capex_extra,
+            "capex_local_tecnic": capex_local,
             "capex_total_nodo": capex_total,
         })
 
@@ -367,7 +386,8 @@ def total_capex_equipos(df_equipment: pd.DataFrame) -> dict:
     )
     chasis = float(df_equipment["capex_chasis"].sum())
     dc_extra = float(df_equipment["capex_extra"].sum())
-    total = cliente + agreg + troncal + chasis + dc_extra
+    local_tecnic = float(df_equipment.get("capex_local_tecnic", pd.Series(0.0)).sum())
+    total = cliente + agreg + troncal + chasis + dc_extra + local_tecnic
 
     return {
         "equipo_cliente": cliente,
@@ -375,6 +395,7 @@ def total_capex_equipos(df_equipment: pd.DataFrame) -> dict:
         "equipo_troncal": troncal,
         "chasis": chasis,
         "datacenter_a900": dc_extra,
+        "local_tecnic": local_tecnic,
         "total": total,
     }
 
@@ -430,7 +451,7 @@ def assign_equipment(
     df = df_cum_merge.merge(
         df_eq[[
             "codigo", "equipo_principal", "n_unidades",
-            "capex_equipo", "capex_chasis", "capex_extra",
+            "capex_equipo", "capex_chasis", "capex_extra", "capex_local_tecnic",
             "sedes_abast", "equipo_cliente_capex", "capex_total_nodo",
         ]],
         on="codigo", how="left",
@@ -439,12 +460,13 @@ def assign_equipment(
     totals = total_capex_equipos(df)
     logger.info(
         "assign_equipment: CAPEX equipos = %.2f M€ "
-        "(cliente=%.1f, agregación=%.1f, troncal=%.1f, chasis=%.1f, DC=%.1f)",
+        "(cliente=%.1f, agregación=%.1f, troncal=%.1f, chasis=%.1f, DC=%.1f, local=%.1f)",
         totals["total"] / 1e6,
         totals["equipo_cliente"] / 1e6,
         totals["equipo_agregacion"] / 1e6,
         totals["equipo_troncal"] / 1e6,
         totals["chasis"] / 1e6,
         totals["datacenter_a900"] / 1e6,
+        totals["local_tecnic"] / 1e6,
     )
     return df

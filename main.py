@@ -107,13 +107,14 @@ def main(
     capex_totals = equipment.total_capex_equipos(equipment_df)
     logger.info(
         "CAPEX equipos = %.2f M€ (cliente=%.1f, agregación=%.1f, "
-        "troncal=%.1f, chasis=%.1f, DC=%.1f)",
+        "troncal=%.1f, chasis=%.1f, DC=%.1f, local_tecnic=%.1f)",
         capex_totals["total"] / 1e6,
         capex_totals["equipo_cliente"] / 1e6,
         capex_totals["equipo_agregacion"] / 1e6,
         capex_totals["equipo_troncal"] / 1e6,
         capex_totals["chasis"] / 1e6,
         capex_totals["datacenter_a900"] / 1e6,
+        capex_totals["local_tecnic"] / 1e6,
     )
 
     # Tràfic per anell (taula + gràfic)

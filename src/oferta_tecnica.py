@@ -355,7 +355,8 @@ def _block_2_equipment(
     )
     capex_chasis = float(df_equipment["capex_chasis"].sum())
     capex_dc = float(df_equipment["capex_extra"].sum())
-    capex_total = capex_cliente + capex_agreg + capex_troncal + capex_chasis + capex_dc
+    capex_local = float(df_equipment.get("capex_local_tecnic", pd.Series(0.0)).sum())
+    capex_total = capex_cliente + capex_agreg + capex_troncal + capex_chasis + capex_dc + capex_local
 
     capex_rows = [
         ["Categoria", "CAPEX (€)", "% del total"],
@@ -369,6 +370,8 @@ def _block_2_equipment(
          f"{capex_troncal / capex_total * 100:.1f}%"],
         ["Xassís nodes (100 k€/node)", f"{capex_chasis:,.0f}",
          f"{capex_chasis / capex_total * 100:.1f}%"],
+        ["Local tecnic (bateries, ODF, clima)", f"{capex_local:,.0f}",
+         f"{capex_local / capex_total * 100:.1f}%"],
         ["Datacenter A900 (extra)", f"{capex_dc:,.0f}",
          f"{capex_dc / capex_total * 100:.1f}%"],
         ["TOTAL", f"{capex_total:,.0f}", "100,0%"],
@@ -397,7 +400,36 @@ def _block_2_equipment(
         ),
         _table(sw_rows, [7 * cm, 3 * cm, 3 * cm, 3 * cm]),
         Spacer(1, 0.4 * cm),
-        Paragraph("CAPEX d'equips (escenari base)", styles["h2"]),
+        Paragraph("Local tecnic als nodes d'agregacio i troncal", styles["h2"]),
+        Paragraph(
+            "Els nodes d'acces (799 municipis) s'instal·len en <b>armari de carrer</b> "
+            "(llicencia d'ocupacio de via publica, instal·lacio one-shot). "
+            "Els nodes d'<b>agregacio</b> (91 nodes) i <b>troncal</b> (9 nodes, excl. A900) "
+            "concentren l'equipament de multiples municipis i requereixen un "
+            "<b>local tecnic</b> propi amb infraestructura especifica.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Estrategia de concentracio:</b> portar tot l'equipament el mes a prop "
+            "possible del node d'agregacio. Menys locals tecnics = menys CAPEX, "
+            "menys OPEX de manteniment i millor supervisio centralitzada des del NOC.",
+            styles["key"],
+        ),
+        _table(
+            [
+                ["Element", "Accés\n(armari carrer)", "Agregació\n(local tecnic)", "Troncal\n(local tecnic gran)"],
+                ["Nombre de nodes", "799 (amb seus)", "91", "9"],
+                ["Habilitacio / obra civil", "—", "30.000 €", "60.000 €"],
+                ["Bateries / SAI", "—", "12.000 € (4h)", "25.000 € (8h)"],
+                ["Repartidors ODF + patch", "—", "8.000 €", "15.000 €"],
+                ["Climatitzacio", "—", "5.000 €", "10.000 €"],
+                ["TOTAL per node", "5.000 €", "55.000 €", "110.000 €"],
+                ["TOTAL partida", f"{799*5000:,.0f} €", f"{91*55000:,.0f} €", f"{9*110000:,.0f} €"],
+            ],
+            [5 * cm, 3.5 * cm, 3.5 * cm, 3.5 * cm],
+        ),
+        Spacer(1, 0.4 * cm),
+        Paragraph("CAPEX total d'equips i infraestructura (escenari base)", styles["h2"]),
         _table(capex_rows, [8 * cm, 4.5 * cm, 3 * cm]),
         Spacer(1, 0.4 * cm),
         Image(str(capex_chart), width=15 * cm, height=8.5 * cm),
