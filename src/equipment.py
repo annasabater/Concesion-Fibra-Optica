@@ -225,6 +225,9 @@ def select_equipment(
     u_20_40 = int(eq_cfg["umbral_20p_a_40p"])
     u_40_mpls = int(eq_cfg["umbral_40p_a_mpls"])
 
+    # Factor de creixement del 20% — dimensionem per tràfic futur
+    factor_creixement = float(eq_cfg.get("factor_creixement", 1.2))
+
     # ---- DC A900 ----
     dc_capex_extra = float(decisiones.get("datacenter_a900", {}).get("capex_extra", 0))
 
@@ -249,8 +252,11 @@ def select_equipment(
             capex_extra = 0.0
 
         elif tier == "agregacion":
+            # Aplicar factor de creixement als dos criteris de selecció
+            bw_dim = bw * factor_creixement
+            n_links_dim = math.ceil(n_links * factor_creixement)
             equipo, n_uds, capex_eq = _pick_aggregation(
-                n_links, bw, u_10_20, u_20_40, u_40_mpls,
+                n_links_dim, bw_dim, u_10_20, u_20_40, u_40_mpls,
                 p_10p, p_20p, p_40p, p_mpls, p_optico, muni,
             )
             capex_chasis = p_chasis

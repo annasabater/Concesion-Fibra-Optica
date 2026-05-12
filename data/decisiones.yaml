@@ -95,6 +95,9 @@ escenarios:
       #   completo -> 1+1 en todos los nodos de agregación y troncal
       redundancia: critico
 
+      # Factor de creixement — dimensionem equips per tràfic futur (×1.2 = +20%)
+      factor_creixement: 1.20          # [PROPUESTA] requeriment del professor
+
       # Vida útil técnica (años) — para amortización y reposición CAPEX
       vida_util_cliente: 8           # [PROPUESTA]
       vida_util_agregacion: 10       # [PROPUESTA]
