@@ -1,0 +1,15 @@
+anillo,tipo,bw_abast_gbps,bw_mayorista_gbps,bw_total_gbps,n_multiplexors,capex_optic_anell,lambdes_necessaries,lambdes_totals,lambdes_lliures
+A1,agregacion,101.4,1117.6,1219.0,4,480000.0,122,160,38
+A2,agregacion,222.0,845.2,1067.2,3,360000.0,107,120,13
+A3,agregacion,40.2,554.4,594.6,2,240000.0,60,80,20
+A4,agregacion,27.7,334.4,362.1,1,120000.0,37,40,3
+A5,agregacion,25.2,246.4,271.6,1,120000.0,28,40,12
+A6,agregacion,18.2,154.0,172.2,1,120000.0,18,40,22
+A7,agregacion,14.8,118.8,133.6,1,120000.0,14,40,26
+A8,agregacion,13.0,103.4,116.4,1,120000.0,12,40,28
+A9,agregacion,13.5,107.8,121.3,1,120000.0,13,40,27
+A10,agregacion,15.0,121.0,136.0,1,120000.0,14,40,26
+A11,agregacion,9.0,77.0,86.0,1,120000.0,9,40,31
+T1,troncal,64.2,752.4,816.6,3,360000.0,82,120,38
+T2,troncal,54.2,545.6,599.8,2,240000.0,60,80,20
+T3,troncal,58.2,519.2,577.4,2,240000.0,58,80,22

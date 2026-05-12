@@ -66,6 +66,7 @@ def _load_scenario_outputs(out_root: Path, escenario: str) -> dict:
         "deployment": pd.read_csv(base / "deployment_priority.csv"),
         "equipment": pd.read_csv(base / "equipment_per_node.csv"),
         "stats_ring": pd.read_csv(base / "stats_by_ring.csv"),
+        "traffic_ring": pd.read_csv(base / "traffic_by_ring.csv"),
     }
 
 
@@ -136,6 +137,34 @@ def _build_comparative_charts(
     plt.close(fig)
 
     return paths
+
+
+def _build_lambda_chart(df_ring: pd.DataFrame, output_dir: Path) -> Path:
+    """Gràfica de lambdes usades vs lliures per anell."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    labels = df_ring["anillo"].tolist()
+    usades = df_ring["lambdes_necessaries"].tolist()
+    lliures = df_ring["lambdes_lliures"].tolist()
+
+    fig, ax = plt.subplots(figsize=(13, 5))
+    x = range(len(labels))
+    ax.bar(x, usades, label="Lambdes usades", color="#1a5490")
+    ax.bar(x, lliures, bottom=usades, label="Lambdes lliures", color="#aed6f1")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels)
+    ax.set_ylabel("Nombre de lambdes (10 Gbps cadascuna)")
+    ax.set_title("Capacitat optica per anell — Lambdes usades vs lliures (any 20)")
+    ax.legend(loc="upper right")
+    for i, (u, ll) in enumerate(zip(usades, lliures)):
+        total = u + ll
+        pct = u / total * 100
+        ax.text(i, total + 0.5, f"{pct:.0f}%", ha="center", fontsize=8,
+                color="#1a5490", fontweight="bold")
+    fig.tight_layout()
+    path = output_dir / "lambdes_per_anell.png"
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +326,25 @@ def _block_2_equipment(
     for _, r in dist.iterrows():
         rows.append([r["tier"].capitalize(), r["equipo_principal"], int(r["n_nodos"])])
 
+    # Switches municipals (armari de carrer) — capa d'accés
+    acc = df_equipment[df_equipment["tier"] == "acceso"]
+    sw_dist = (
+        acc.groupby("equipo_principal").size().reset_index(name="n")
+        .sort_values("n", ascending=False)
+    )
+    sw_rows = [["Tipus switch municipal", "Municipis", "Ports màx.", "Preu unit."]]
+    sw_info = {
+        "switch_10p": ("10 ports 10/100/1000", "1.500 €"),
+        "switch_20p": ("20 ports 10/100/1000", "5.000 €"),
+        "switch_40p": ("40 ports 10/100/1000", "12.000 €"),
+        "sense_switch": ("Sense switch (0 sedes)", "—"),
+    }
+    for _, r in sw_dist.iterrows():
+        nom, preu = sw_info.get(r["equipo_principal"], (r["equipo_principal"], "—"))
+        ports = r["equipo_principal"].replace("switch_", "").replace("p", "") \
+            if "switch" in r["equipo_principal"] else "—"
+        sw_rows.append([nom, int(r["n"]), ports, preu])
+
     # Resumen CAPEX equipos por categoría
     capex_cliente = float(df_equipment["equipo_cliente_capex"].sum())
     capex_agreg = float(
@@ -310,14 +358,16 @@ def _block_2_equipment(
     capex_total = capex_cliente + capex_agreg + capex_troncal + capex_chasis + capex_dc
 
     capex_rows = [
-        ["Categoría", "CAPEX (€)", "% del total"],
-        ["Equipo cliente (300 €/sede)", f"{capex_cliente:,.0f}",
+        ["Categoria", "CAPEX (€)", "% del total"],
+        ["Equip client (300 €/seu)", f"{capex_cliente:,.0f}",
          f"{capex_cliente / capex_total * 100:.1f}%"],
-        ["Equipo agregación (10p/20p/40p/MPLS)", f"{capex_agreg:,.0f}",
+        ["Switch municipal accés (armari de carrer)", f"{capex_agreg:,.0f}",
          f"{capex_agreg / capex_total * 100:.1f}%"],
-        ["Equipo troncal (MPLS + óptico 40λ)", f"{capex_troncal:,.0f}",
+        ["Equip agregació (10p/20p/40p/MPLS)", f"{capex_agreg:,.0f}",
+         f"{capex_agreg / capex_total * 100:.1f}%"],
+        ["Equip troncal (MPLS + optic 40 lambdes)", f"{capex_troncal:,.0f}",
          f"{capex_troncal / capex_total * 100:.1f}%"],
-        ["Chasis nodos (100 k€/nodo)", f"{capex_chasis:,.0f}",
+        ["Xassís nodes (100 k€/node)", f"{capex_chasis:,.0f}",
          f"{capex_chasis / capex_total * 100:.1f}%"],
         ["Datacenter A900 (extra)", f"{capex_dc:,.0f}",
          f"{capex_dc / capex_total * 100:.1f}%"],
@@ -325,20 +375,29 @@ def _block_2_equipment(
     ]
 
     return [
-        Paragraph("2. Selección de equipo por nodo", styles["h1"]),
+        Paragraph("2. Selecció d'equip per node", styles["h1"]),
         Paragraph(
-            "Tras calcular el tráfico acumulado por BFS desde las hojas hacia "
-            "A900 (incluyendo el reenvío de los anillos de agregación a sus "
-            "gateways y de los anillos troncales a A900), cada nodo recibe el "
-            "equipo más pequeño que cumple <b>simultáneamente</b> el umbral de "
-            "puertos (n_links contra los umbrales de decisiones.yaml) y la "
-            "capacidad nominal en Mbps del equipo.",
+            "Despres de calcular el trafic acumulat per BFS des de les fulles cap a "
+            "A900, cada node rep l'equip mes petit que compleix <b>simultaniament</b> "
+            "el llindar de ports i la capacitat nominal. S'aplica un "
+            "<b>factor de creixement del 20%</b> al dimensionament (ports i BW x1,2) "
+            "per absorbir creixement organic sense reemplazar equips.",
             styles["body"],
         ),
-        Paragraph("Distribución de equipos en el escenario base", styles["h2"]),
+        Paragraph("Distribucio d'equips en l'escenari base", styles["h2"]),
         _table(rows, [2.5 * cm, 9 * cm, 3 * cm]),
         Spacer(1, 0.4 * cm),
-        Paragraph("CAPEX de equipos (escenario base)", styles["h2"]),
+        Paragraph("Switches municipals — armari de carrer (capa d'acces)", styles["h2"]),
+        Paragraph(
+            "Cada municipi amb sedes publiques (sedes_abast > 0) porta un switch local "
+            "al punt d'entrada de la fibra. El dimensionament de ports es: "
+            "<b>ceil((sedes + 2) x 1,2)</b> — les 2 ports extra son per uplink cap al "
+            "concentrador i reserva de creixement.",
+            styles["body"],
+        ),
+        _table(sw_rows, [7 * cm, 3 * cm, 3 * cm, 3 * cm]),
+        Spacer(1, 0.4 * cm),
+        Paragraph("CAPEX d'equips (escenari base)", styles["h2"]),
         _table(capex_rows, [8 * cm, 4.5 * cm, 3 * cm]),
         Spacer(1, 0.4 * cm),
         Image(str(capex_chart), width=15 * cm, height=8.5 * cm),
@@ -346,11 +405,85 @@ def _block_2_equipment(
     ]
 
 
-def _block_3_decisions(
+def _block_3_optical(
+    styles: dict,
+    df_ring: pd.DataFrame,
+    chart_path: Path,
+) -> list:
+    """Bloc PDF: arquitectura optica DWDM, multiplexors i lambdes per anell."""
+    rows = [["Anell", "Tipus", "BW total\n(Gbps)", "Mux\nDWDM",
+             "Lambdes\nusades", "Lambdes\ntotals", "Lambdes\nlliures", "Ocupacio"]]
+    for _, r in df_ring.iterrows():
+        pct = r["lambdes_necessaries"] / r["lambdes_totals"] * 100
+        rows.append([
+            r["anillo"],
+            r["tipo"].capitalize(),
+            f"{r['bw_total_gbps']:,.1f}",
+            int(r["n_multiplexors"]),
+            int(r["lambdes_necessaries"]),
+            int(r["lambdes_totals"]),
+            int(r["lambdes_lliures"]),
+            f"{pct:.0f}%",
+        ])
+    tot_nec = int(df_ring["lambdes_necessaries"].sum())
+    tot_tot = int(df_ring["lambdes_totals"].sum())
+    tot_ll = int(df_ring["lambdes_lliures"].sum())
+    tot_bw = df_ring["bw_total_gbps"].sum()
+    tot_mux = int(df_ring["n_multiplexors"].sum())
+    rows.append([
+        "TOTAL", "—", f"{tot_bw:,.1f}", tot_mux,
+        tot_nec, tot_tot, tot_ll,
+        f"{tot_nec / tot_tot * 100:.0f}%",
+    ])
+
+    return [
+        Paragraph("3. Capacitat optica: multiplexors DWDM i lambdes", styles["h1"]),
+        Paragraph(
+            "Cada node d'agregacio combina dues capes funcionals independents:",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Capa Ethernet</b> — switches 10p/20p/40p/MPLS que recullen el trafic "
+            "de les seus locals (armaris de carrer) i el agreguen elèctricament fins "
+            "al node central de l'anell.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Capa optica DWDM</b> — multiplexors de 40 lambdes, cada lambda "
+            "transporta 10 Gbps, donant 400 Gbps de capacitat per multiplexor. "
+            "Es col·loquen <b>2 multiplexors per anell</b> (un a cada extrem), de "
+            "manera que l'anell es bidireccional i te redundancia de camins.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Formules de dimensionament:</b><br/>"
+            "n_mux = ceil(BW_total / 400 Gbps)  |  "
+            "lambdes_usades = ceil(BW_total / 10 Gbps)  |  "
+            "lambdes_lliures = n_mux x 40 - lambdes_usades",
+            styles["body"],
+        ),
+        Spacer(1, 0.3 * cm),
+        Paragraph("Capacitat optica per anell — escenari base, any 20", styles["h2"]),
+        _table(rows, [1.6*cm, 2.4*cm, 2.6*cm, 1.8*cm, 2.4*cm, 2.4*cm, 2.4*cm, 2.2*cm]),
+        Spacer(1, 0.4 * cm),
+        Paragraph(
+            "<b>Observacio clau:</b> A1 es l'anell mes carregat — 153 de 160 lambdes "
+            "ocupades, nomes 7 lliures (ocupacio 96%). T2 i T3 tambe van justos "
+            "(ocupacio 94%). A4 i A7-A11 conserven mes marge. Si el trafic supera "
+            "les previsions d'aqui a 20 anys, A1 sera el primer a necessitar "
+            "un multiplexor addicional.",
+            styles["key"],
+        ),
+        Image(str(chart_path), width=16 * cm, height=6.5 * cm),
+        PageBreak(),
+    ]
+
+
+def _block_4_decisions(
     styles: dict,
     decisiones_yaml: dict,
 ) -> list:
-    """Render de las palancas clave defendidas en la oferta."""
+    """Render de les palancas clau defensades a l'oferta."""
     may = decisiones_yaml["mayorista"]
     abast = decisiones_yaml["abast"]
     eq = decisiones_yaml["equipos"]
@@ -401,7 +534,7 @@ def _block_3_decisions(
          "CPD, NOC, salida internet pública, redundancia"],
     ]
     return [
-        Paragraph("3. Decisiones técnicas defendidas", styles["h1"]),
+        Paragraph("4. Decisions tecniques defensades", styles["h1"]),
         Paragraph(
             "Las palancas variables de la oferta viven en "
             "<i>data/decisiones.yaml</i> y se recalculan automáticamente sobre "
@@ -415,7 +548,7 @@ def _block_3_decisions(
     ]
 
 
-def _block_4_geomarketing(
+def _block_5_geomarketing(
     styles: dict,
     df_viab: pd.DataFrame,
     df_orden: pd.DataFrame,
@@ -454,7 +587,7 @@ def _block_4_geomarketing(
         ])
 
     return [
-        Paragraph("4. Análisis geomarketing", styles["h1"]),
+        Paragraph("5. Analisi geomarketing", styles["h1"]),
         Paragraph(
             "Para cada uno de los 900 municipios calculamos ingresos "
             "potenciales (ABAST + mayorista residencial + PYMEs estimadas), "
@@ -482,7 +615,7 @@ def _block_4_geomarketing(
     ]
 
 
-def _block_5_findings(
+def _block_6_findings(
     styles: dict,
     df_equipment: pd.DataFrame,
     img_anillos: Path,
@@ -496,7 +629,7 @@ def _block_5_findings(
     ) / 1000
 
     flow = [
-        Paragraph("5. Hallazgos clave para la defensa", styles["h1"]),
+        Paragraph("6. Hallazgos clau per a la defensa", styles["h1"]),
         Paragraph(
             f"<b>Hallazgo 1 — A900 es SPOF crítico ({bw_a900:,.1f} Gbps):</b> "
             "el 100% del tráfico territorial converge en A900, que es a la vez "
@@ -571,11 +704,14 @@ def generate_oferta_tecnica_pdf(
     base_yaml = _load_decisiones_yaml(data_dir / "decisiones.yaml", "base")
     decisiones_yaml = _shallow_merge(base_yaml, decisiones_yaml)
 
-    # Gráficas comparativas.
+    # Grafiques comparatives.
     out_oferta = output_dir / "oferta_tecnica"
     chart_paths = _build_comparative_charts(scenarios_data, out_oferta)
+    lambda_chart = _build_lambda_chart(
+        scenarios_data[escenario]["traffic_ring"], out_oferta,
+    )
 
-    # Imágenes de la topología (ya existen en outputs/escenario_base/img/).
+    # Imatges de la topologia (ja existeixen a outputs/escenario_base/img/).
     img_dir = output_dir / f"escenario_{escenario}" / "img"
     img_anillos = img_dir / "topologia_anillos.png"
     img_a2 = img_dir / "topologia_detalle_A2.png"
@@ -586,12 +722,13 @@ def generate_oferta_tecnica_pdf(
         str(pdf_path), pagesize=A4,
         leftMargin=2 * cm, rightMargin=2 * cm,
         topMargin=2 * cm, bottomMargin=2 * cm,
-        title=f"Oferta técnica TAREA 5 — {escenario}",
+        title=f"Oferta tecnica TAREA 5 - {escenario}",
         author="Proyecto ABAST",
     )
 
     styles = _styles()
     eq_df = scenarios_data[escenario]["equipment"]
+    ring_df = scenarios_data[escenario]["traffic_ring"]
     via_df = scenarios_data[escenario]["viability"]
     ord_df = scenarios_data[escenario]["deployment"]
 
@@ -599,12 +736,13 @@ def generate_oferta_tecnica_pdf(
     flowables += _block_cover(styles, escenario)
     flowables += _block_1_traffic(styles, scenarios_data, chart_paths["bw"])
     flowables += _block_2_equipment(styles, eq_df, chart_paths["capex"])
-    flowables += _block_3_decisions(styles, decisiones_yaml)
-    flowables += _block_4_geomarketing(styles, via_df, ord_df)
-    flowables += _block_5_findings(styles, eq_df, img_anillos, img_a2)
+    flowables += _block_3_optical(styles, ring_df, lambda_chart)
+    flowables += _block_4_decisions(styles, decisiones_yaml)
+    flowables += _block_5_geomarketing(styles, via_df, ord_df)
+    flowables += _block_6_findings(styles, eq_df, img_anillos, img_a2)
 
     doc.build(flowables, onFirstPage=_footer, onLaterPages=_footer)
-    logger.info("Oferta técnica generada: %s", pdf_path)
+    logger.info("Oferta tecnica generada: %s", pdf_path)
     return pdf_path
 
 
