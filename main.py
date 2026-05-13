@@ -126,34 +126,54 @@ def main(
     logger.info("Tràfic per anell guardat a %s", out / "traffic_by_ring.csv")
 
     # ---- FASE 6 — capex ----
-    logger.info("[6/11] capex: inversiones por año y por anillo...")
+    logger.info("[6/11] capex: inversiones por año...")
     capex_df = None
     try:
         capex_df = capex.compute_capex(df, equipment_df, decisiones, parametros)
+        capex_df.to_csv(out / "capex.csv", index=False)
+        logger.info("CAPEX total 20 años = %.2f M€", capex_df["total_eur"].sum() / 1e6)
     except NotImplementedError as e:
         logger.warning("capex pendiente: %s", e)
 
-    # ---- FASE 7 — opex ----
-    logger.info("[7/11] opex: costes operativos plurianuales...")
-    opex_df = None
-    try:
-        opex_df = opex.compute_opex(capex_df, df, decisiones, parametros)
-    except NotImplementedError as e:
-        logger.warning("opex pendiente: %s", e)
-
-    # ---- FASE 8 — revenue ----
-    logger.info("[8/11] revenue: ingresos plurianuales...")
+    # ---- FASE 7 — revenue (antes de opex, que necesita los ingresos) ----
+    logger.info("[7/11] revenue: ingresos plurianuales...")
     revenue_df = None
     try:
         revenue_df = revenue.compute_revenue(df, decisiones, parametros)
+        revenue_df.to_csv(out / "revenue.csv", index=False)
+        logger.info(
+            "Ingresos año 20 = %.2f M€",
+            revenue_df.iloc[-1]["total_eur"] / 1e6 if revenue_df is not None else 0,
+        )
     except NotImplementedError as e:
         logger.warning("revenue pendiente: %s", e)
+
+    # ---- FASE 8 — opex ----
+    logger.info("[8/11] opex: costes operativos plurianuales...")
+    opex_df = None
+    try:
+        opex_df = opex.compute_opex(capex_df, df, revenue_df, decisiones, parametros)
+        opex_df.to_csv(out / "opex.csv", index=False)
+        logger.info("OPEX total 20 años = %.2f M€", opex_df["total_eur"].sum() / 1e6)
+    except NotImplementedError as e:
+        logger.warning("opex pendiente: %s", e)
 
     # ---- FASE 9 — pnl ----
     logger.info("[9/11] pnl: cuenta de resultados + KPIs (NPV, IRR, payback)...")
     pnl_df = None
     try:
         pnl_df = pnl.compute_pnl(capex_df, opex_df, revenue_df, decisiones)
+        pnl_df.to_csv(out / "pnl.csv", index=False)
+        if pnl_df is not None and pnl_df.attrs:
+            kpis = pnl_df.attrs
+            logger.info(
+                "KPIs: NPV=%.2f M€ | IRR=%.1f%% | Payback=%d años | "
+                "EBITDA margin año20=%.1f%%",
+                kpis.get("npv", 0) / 1e6,
+                (kpis.get("irr", 0) or 0) * 100,
+                kpis.get("payback_anios", 0),
+                kpis.get("ebitda_margin_y20", 0) * 100,
+            )
     except NotImplementedError as e:
         logger.warning("pnl pendiente: %s", e)
 
