@@ -140,26 +140,31 @@ def _build_comparative_charts(
 
 
 def _build_lambda_chart(df_ring: pd.DataFrame, output_dir: Path) -> Path:
-    """Gràfica de lambdes usades vs lliures per anell."""
+    """Gràfica de lambdes: usades vs lliures per anell, amb % d'ocupació."""
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = df_ring["anillo"].tolist()
     usades = df_ring["lambdes_necessaries"].tolist()
     lliures = df_ring["lambdes_lliures"].tolist()
+    totals = df_ring["lambdes_totals"].tolist()
 
-    fig, ax = plt.subplots(figsize=(13, 5))
-    x = range(len(labels))
-    ax.bar(x, usades, label="Lambdes usades", color="#1a5490")
+    fig, ax = plt.subplots(figsize=(14, 5))
+    x = list(range(len(labels)))
+
+    ax.bar(x, usades, label="Lambdes usades (trafic any 20)", color="#1a5490")
     ax.bar(x, lliures, bottom=usades, label="Lambdes lliures", color="#aed6f1")
-    ax.set_xticks(list(x))
+
+    ax.set_xticks(x)
     ax.set_xticklabels(labels)
-    ax.set_ylabel("Nombre de lambdes (10 Gbps cadascuna)")
+    ax.set_ylabel("Nombre de lambdes (10 Gbps cada una)")
     ax.set_title("Capacitat optica per anell — Lambdes usades vs lliures (any 20)")
-    ax.legend(loc="upper right")
-    for i, (u, ll) in enumerate(zip(usades, lliures)):
-        total = u + ll
-        pct = u / total * 100
-        ax.text(i, total + 0.5, f"{pct:.0f}%", ha="center", fontsize=8,
-                color="#1a5490", fontweight="bold")
+    ax.legend(loc="upper right", fontsize=9)
+
+    for i, (u, t) in enumerate(zip(usades, totals)):
+        pct = u / t * 100
+        color_txt = "#c0392b" if pct >= 90 else "#1a5490"
+        ax.text(i, t + 0.8, f"{pct:.0f}%", ha="center", fontsize=8,
+                color=color_txt, fontweight="bold")
+
     fig.tight_layout()
     path = output_dir / "lambdes_per_anell.png"
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -347,6 +352,9 @@ def _block_2_equipment(
 
     # Resumen CAPEX equipos por categoría
     capex_cliente = float(df_equipment["equipo_cliente_capex"].sum())
+    capex_acceso = float(
+        df_equipment.loc[df_equipment["tier"] == "acceso", "capex_equipo"].sum()
+    )
     capex_agreg = float(
         df_equipment.loc[df_equipment["tier"] == "agregacion", "capex_equipo"].sum()
     )
@@ -356,14 +364,14 @@ def _block_2_equipment(
     capex_chasis = float(df_equipment["capex_chasis"].sum())
     capex_dc = float(df_equipment["capex_extra"].sum())
     capex_local = float(df_equipment.get("capex_local_tecnic", pd.Series(0.0)).sum())
-    capex_total = capex_cliente + capex_agreg + capex_troncal + capex_chasis + capex_dc + capex_local
+    capex_total = capex_cliente + capex_acceso + capex_agreg + capex_troncal + capex_chasis + capex_dc + capex_local
 
     capex_rows = [
         ["Categoria", "CAPEX (€)", "% del total"],
-        ["Equip client (300 €/seu)", f"{capex_cliente:,.0f}",
+        ["Equip client CPE (300 €/seu ABAST)", f"{capex_cliente:,.0f}",
          f"{capex_cliente / capex_total * 100:.1f}%"],
-        ["Switch municipal accés (armari de carrer)", f"{capex_agreg:,.0f}",
-         f"{capex_agreg / capex_total * 100:.1f}%"],
+        ["Switch municipal accés (armari de carrer)", f"{capex_acceso:,.0f}",
+         f"{capex_acceso / capex_total * 100:.1f}%"],
         ["Equip agregació (10p/20p/40p/MPLS)", f"{capex_agreg:,.0f}",
          f"{capex_agreg / capex_total * 100:.1f}%"],
         ["Equip troncal (MPLS + optic 40 lambdes)", f"{capex_troncal:,.0f}",
@@ -382,9 +390,52 @@ def _block_2_equipment(
         Paragraph(
             "Despres de calcular el trafic acumulat per BFS des de les fulles cap a "
             "A900, cada node rep l'equip mes petit que compleix <b>simultaniament</b> "
-            "el llindar de ports i la capacitat nominal. S'aplica un "
-            "<b>factor de creixement del 20%</b> al dimensionament (ports i BW x1,2) "
-            "per absorbir creixement organic sense reemplazar equips.",
+            "el llindar de ports i la capacitat nominal.",
+            styles["body"],
+        ),
+        Paragraph("Metodologia: acumulació de tràfic en 3 passades", styles["h2"]),
+        Paragraph(
+            "El càlcul de tràfic acumulat recorre el graf en <b>3 passades successives</b>, "
+            "reflectint la jerarquia real de la xarxa:",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Passada 1 — capa d'accés</b>: BFS en ordre topològic des de les 799 "
+            "fulles fins als nodes d'agregació. Cada node suma el tràfic de tots els "
+            "seus fills directes (municipi → concentrador → node d'agregació). "
+            "El resultat és el tràfic acumulat en cada node d'accés.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Passada 2 — anells d'agregació</b>: cada anell (A1–A11) suma el total "
+            "de tots els seus membres al <i>gateway</i> (el node que connecta l'anell "
+            "amb el troncal). Per exemple, A800 rep el tràfic agregat de tots els "
+            "municipis de l'anell A2.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Passada 3 — anells troncals</b>: T1, T2 i T3 reenvien el seu total "
+            "a A900. A900 és el punt on convergeix el 100% del tràfic territorial. "
+            "<b>Guard crític (instrucció professora):</b> A900 pertany físicament a A1 "
+            "i A2, però es compta NOMÉS a A1 per evitar doblar el tràfic. "
+            "Codi: <i>and (n != ROOT_NODE or ring == 'A1')</i>.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Sanity check automàtic:</b> al final de les 3 passades, el codi "
+            "verifica que bw_acumulat(A900) = suma de tots els bw_total_mbps dels "
+            "900 municipis (tolerància 0,1%). Si no quadra, el pipeline llança un "
+            "WARNING i s'atura. Això garanteix que no hi ha pèrdua ni duplicació "
+            "de tràfic en cap pas del càlcul.",
+            styles["key"],
+        ),
+        Paragraph(
+            "<b>Factor de creixement ×1,2:</b> tots els dimensionaments (ports i BW) "
+            "s'inflen un 20% abans de seleccionar l'equip. Motiu: la concessió dura "
+            "20 anys i el tràfic creixerà. Dimensionar just al any 20 significa que "
+            "als anys 15–18 ja s'haurien de substituir equips. Amb el factor ×1,2 "
+            "s'absorbeix el creixement orgànic sense obra civil addicional, "
+            "evitant CAPEX no previst i interrupcions de servei.",
             styles["body"],
         ),
         Paragraph("Distribucio d'equips en l'escenari base", styles["h2"]),
@@ -488,25 +539,32 @@ def _block_3_optical(
             styles["body"],
         ),
         Paragraph(
-            "<b>Formules de dimensionament:</b><br/>"
-            "n_mux = ceil(BW_total / 400 Gbps)  |  "
-            "lambdes_usades = ceil(BW_total / 10 Gbps)  |  "
-            "lambdes_lliures = n_mux x 40 - lambdes_usades",
+            "<b>Formules de dimensionament (amb marge 20%):</b><br/>"
+            "lambdes_usades = ceil(BW_total / 10 Gbps)<br/>"
+            "n_mux = ceil(lambdes_usades x 1,25 / 40)  — garanteix que usades &lt;= 80% del total<br/>"
+            "lambdes_totals = n_mux x 40  |  lambdes_lliures = lambdes_totals - lambdes_usades",
             styles["body"],
         ),
         Spacer(1, 0.3 * cm),
         Paragraph("Capacitat optica per anell — escenari base, any 20", styles["h2"]),
         _table(rows, [1.6*cm, 2.4*cm, 2.6*cm, 1.8*cm, 2.4*cm, 2.4*cm, 2.4*cm, 2.2*cm]),
         Spacer(1, 0.4 * cm),
+        Image(str(chart_path), width=16 * cm, height=6.5 * cm),
+        Spacer(1, 0.3 * cm),
         Paragraph(
-            "<b>Observacio clau:</b> A1 es l'anell mes carregat — 153 de 160 lambdes "
-            "ocupades, nomes 7 lliures (ocupacio 96%). T2 i T3 tambe van justos "
-            "(ocupacio 94%). A4 i A7-A11 conserven mes marge. Si el trafic supera "
-            "les previsions d'aqui a 20 anys, A1 sera el primer a necessitar "
-            "un multiplexor addicional.",
+            "<b>Justificacio del marge:</b> tots els anells estan dimensionats perque "
+            "al any 20 (cas mes desfavorable) el trafic no superi el 80% de la capacitat "
+            "optica, deixant un marge minim del 20% per absorbir creixement no previst. "
+            "Alguns anells presenten un marge superior al 20% minim (per exemple A5 amb "
+            "58% lliure o A2 amb 35%) — aixo no es un error de dimensionat sino una "
+            "consequencia de la <b>discrecio dels multiplexors</b>: cada unitat proporciona "
+            "exactament 40 lambdes i no existeix cap model intermedi. Si un anell necessita "
+            "43 lambdes amb el marge, s'instal·len 2 mux (80 lambdes) perque amb 1 mux "
+            "(40 lambdes) no hi cabria el trafic mes el marge exigit. "
+            "El sobredimensionat residual es inevitable amb equipament discret i no suposa "
+            "cost operatiu addicional.",
             styles["key"],
         ),
-        Image(str(chart_path), width=16 * cm, height=6.5 * cm),
         PageBreak(),
     ]
 
@@ -690,6 +748,17 @@ def _block_6_findings(
             "decisivo para la negociación del reequilibrio LCSP.",
             styles["key"],
         ),
+        Paragraph(
+            "<b>Hallazgo 4 — A900 compta una sola vegada (guard topològic):</b> "
+            "A900 pertany físicament als anells A1, A2, T1, T2 i T3 simultàniament "
+            "— és el datacenter on convergeix tot. Sense cap mesura correctora, "
+            "el tràfic d'A900 es comptaria 5 vegades i el dimensionat s'inflaria "
+            "artificialment. La solució implementada és un guard explícit al codi "
+            "(<i>n != ROOT_NODE or ring == 'A1'</i>) que compta A900 NOMÉS a l'anell A1. "
+            "Instrucció directa de la professora Clara Coll (12/05/2026): "
+            "\"el municipi 900 nomes esta a l'agregacio 1, no dupliquem\".",
+            styles["key"],
+        ),
         Paragraph("Topología completa (anillos troncal + agregación)", styles["h2"]),
         Image(str(img_anillos), width=15 * cm, height=15 * cm),
         PageBreak(),
@@ -806,6 +875,213 @@ def _footer(canvas, doc):
 
 
 # ---------------------------------------------------------------------------
+# Entrega específica: dimensionat anells troncals + agregació
+# ---------------------------------------------------------------------------
+
+def generate_ring_dimensioning_pdf(
+    escenario: str = "base",
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    data_dir: Path = DEFAULT_DATA_DIR,
+) -> Path:
+    """Genera el PDF específic de l'entrega de dimensionat d'anells.
+
+    Contingut:
+        - Taula completa: anells agregació (A1–A11) + troncals (T1–T3)
+          amb tràfic ABAST, Majorista, Total i dimensionat DWDM.
+        - Gràfic lambdes usades vs lliures per anell.
+        - Conclusions sobre anells crítics.
+
+    Args:
+        escenario: escenario a usar (default: base).
+        output_dir: ruta base de outputs/.
+        data_dir: ruta a data/.
+
+    Returns:
+        Path al PDF generat.
+    """
+    out_base = output_dir / f"escenario_{escenario}"
+    df_ring = pd.read_csv(out_base / "traffic_by_ring.csv")
+    df_stats = pd.read_csv(out_base / "stats_by_ring.csv")
+    df = df_ring.merge(df_stats[["anillo", "n_nodos", "n_munis_cubiertos",
+                                  "n_sedes_abast", "total_hab"]], on="anillo", how="left")
+
+    out_oferta = output_dir / "oferta_tecnica"
+    out_oferta.mkdir(parents=True, exist_ok=True)
+
+    # Gràfic lambdes
+    lambda_chart = _build_lambda_chart(df_ring, out_oferta)
+
+    styles = _styles()
+    pdf_path = out_oferta / f"dimensionat_anells_{escenario}.pdf"
+    doc = SimpleDocTemplate(
+        str(pdf_path), pagesize=A4,
+        leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        title=f"Dimensionat anells — {escenario}",
+        author="Proyecto ABAST",
+    )
+
+    # --- Taula principal ---
+    agg_rows = [["Anell", "Nodos", "Munis\ncoberts", "Sedes\nABAST",
+                 "BW ABAST\n(Gbps)", "BW Majorista\n(Gbps)", "BW Total\n(Gbps)",
+                 "Mux\nDWDM (x40 lam)", "Lam.\nusades", "Lam.\nlliures", "Ocupacio"]]
+    tro_rows = [["Anell", "Nodos", "Munis\ncoberts", "Sedes\nABAST",
+                 "BW ABAST\n(Gbps)", "BW Majorista\n(Gbps)", "BW Total\n(Gbps)",
+                 "Mux\nDWDM (x40 lam)", "Lam.\nusades", "Lam.\nlliures", "Ocupacio"]]
+
+    tot_abast = tot_mayo = tot_bw = 0.0
+    for _, r in df.iterrows():
+        pct = r["lambdes_necessaries"] / r["lambdes_totals"] * 100
+        row = [
+            r["anillo"],
+            int(r["n_nodos"]),
+            int(r["n_munis_cubiertos"]),
+            int(r["n_sedes_abast"]),
+            f"{r['bw_abast_gbps']:,.1f}",
+            f"{r['bw_mayorista_gbps']:,.1f}",
+            f"{r['bw_total_gbps']:,.1f}",
+            int(r["n_multiplexors"]),
+            int(r["lambdes_necessaries"]),
+            int(r["lambdes_lliures"]),
+            f"{pct:.0f}%",
+        ]
+        if r["tipo"] == "agregacion":
+            agg_rows.append(row)
+            tot_abast += r["bw_abast_gbps"]
+            tot_mayo += r["bw_mayorista_gbps"]
+            tot_bw += r["bw_total_gbps"]
+        else:
+            tro_rows.append(row)
+
+    # Fila subtotal agregació
+    tot_lam_nec = int(df[df["tipo"]=="agregacion"]["lambdes_necessaries"].sum())
+    tot_lam_tot = int(df[df["tipo"]=="agregacion"]["lambdes_totals"].sum())
+    tot_mux = int(df[df["tipo"]=="agregacion"]["n_multiplexors"].sum())
+    agg_rows.append([
+        "TOTAL", "—", "—", "—",
+        f"{tot_abast:,.1f}", f"{tot_mayo:,.1f}", f"{tot_bw:,.1f}",
+        tot_mux, tot_lam_nec, tot_lam_tot - tot_lam_nec,
+        f"{tot_lam_nec/tot_lam_tot*100:.0f}%",
+    ])
+
+    # Fila subtotal troncal
+    ta = df[df["tipo"]=="troncal"]["bw_abast_gbps"].sum()
+    tm = df[df["tipo"]=="troncal"]["bw_mayorista_gbps"].sum()
+    tt = df[df["tipo"]=="troncal"]["bw_total_gbps"].sum()
+    tln = int(df[df["tipo"]=="troncal"]["lambdes_necessaries"].sum())
+    tlt = int(df[df["tipo"]=="troncal"]["lambdes_totals"].sum())
+    tmx = int(df[df["tipo"]=="troncal"]["n_multiplexors"].sum())
+    tro_rows.append([
+        "TOTAL", "—", "—", "—",
+        f"{ta:,.1f}", f"{tm:,.1f}", f"{tt:,.1f}",
+        tmx, tln, tlt - tln, f"{tln/tlt*100:.0f}%",
+    ])
+
+    col_w = [1.3*cm, 1.3*cm, 1.5*cm, 1.5*cm, 2.0*cm, 2.4*cm, 2.0*cm, 1.8*cm, 1.5*cm, 1.5*cm, 1.7*cm]
+
+    # Estil taula amb fila subtotal en negreta
+    subtotal_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5490")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (0, 1), (0, -1), "LEFT"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2),
+         [colors.whitesmoke, colors.HexColor("#ebf5fb")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#d5e8f5")),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#bdc3c7")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ])
+
+    def _styled_table(data):
+        t = Table(data, colWidths=col_w, hAlign="LEFT")
+        t.setStyle(subtotal_style)
+        return t
+
+    flowables = []
+
+    # Metodologia breu
+    flowables += [
+        Paragraph("Metodologia de càlcul", styles["h1"]),
+        Paragraph(
+            "El tràfic de cada anell és la suma del tràfic acumulat de tots "
+            "els municipis membres.",
+            styles["body"],
+        ),
+        Paragraph(
+            "<b>Nota A900:</b> el node A900 (datacenter) pertany físicament a A1 i A2, "
+            "però es compta NOMÉS a A1 per evitar doblar el tràfic.",
+            styles["small"],
+        ),
+        Spacer(1, 0.5 * cm),
+        Paragraph("Anells d'agregació — A1 a A11", styles["h1"]),
+        _styled_table(agg_rows),
+        Spacer(1, 0.6 * cm),
+        Paragraph("Anells troncals — T1, T2, T3", styles["h1"]),
+        _styled_table(tro_rows),
+        PageBreak(),
+    ]
+
+    # Conclusions dinàmiques des del CSV
+    df_sorted = df.sort_values("lambdes_necessaries", ascending=False)
+    mes_carregats = []
+    for _, r in df_sorted.head(5).iterrows():
+        pct = r["lambdes_necessaries"] / r["lambdes_totals"] * 100
+        lliures = int(r["lambdes_lliures"])
+        mes_carregats.append(
+            f"- <b>{r['anillo']}</b>: {int(r['lambdes_necessaries'])}/{int(r['lambdes_totals'])} "
+            f"lambdes — {pct:.0f}% d'ocupació, {lliures} lambdes lliures."
+        )
+
+    menys_carregats = df_sorted.tail(3)
+    menys_txt = ", ".join(
+        f"{r['anillo']} ({int(r['lambdes_necessaries'] / r['lambdes_totals'] * 100)}%)"
+        for _, r in menys_carregats.iterrows()
+    )
+
+    # Gràfic + conclusions
+    flowables += [
+        Paragraph("Ocupació òptica per anell", styles["h1"]),
+        Image(str(lambda_chart), width=17 * cm, height=7 * cm),
+        Spacer(1, 0.5 * cm),
+        Paragraph("Conclusions del dimensionat", styles["h1"]),
+        Paragraph(
+            "<b>Tots els anells compleixen el marge mínim del 20%</b> (ocupació maxima 80% "
+            "al any 20). Els 5 anells mes carregats son:",
+            styles["body"],
+        ),
+    ]
+    for txt in mes_carregats:
+        flowables.append(Paragraph(txt, styles["body"]))
+
+    flowables += [
+        Spacer(1, 0.3 * cm),
+        Paragraph(
+            f"<b>Anells amb menor càrrega:</b> {menys_txt}. "
+            "Disposen de capacitat àmplia per creixement orgànic durant la concessió.",
+            styles["body"],
+        ),
+        Spacer(1, 0.3 * cm),
+        Paragraph(
+            "<b>Justificació del marge:</b> tots els anells estan dimensionats perquè "
+            "al any 20 el tràfic no superi el 80% de la capacitat òptica (marge mínim 20%). "
+            "Alguns anells presenten més del 20% lliure — conseqüència inevitable de la "
+            "<b>discreció dels multiplexors</b> (40 lambdes per unitat, sense models "
+            "intermedis). Si un anell necessita 43 lambdes amb el marge, cal instal·lar "
+            "2 mux (80 lambdes); amb 1 mux (40 lambdes) no hi cabria el tràfic més el marge.",
+            styles["key"],
+        ),
+    ]
+
+    doc.build(flowables)
+    logger.info("Dimensionat anells generat: %s", pdf_path)
+    return pdf_path
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -839,3 +1115,8 @@ if __name__ == "__main__":
         args.escenario, args.output_dir, args.data_dir,
     )
     print(f"OK -> {pdf}")
+
+    ring_pdf = generate_ring_dimensioning_pdf(
+        args.escenario, args.output_dir, args.data_dir,
+    )
+    print(f"OK -> {ring_pdf}")

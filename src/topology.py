@@ -416,8 +416,11 @@ def traffic_by_ring(
     lambdes_per_mux = 40
     bw_per_lambda_gbps = 10.0
 
+    # 20% de marge: lambdes usades <= 80% del total => n_mux = ceil(usades * 1.25 / 40)
     df["n_multiplexors"] = df["bw_total_gbps"].apply(
-        lambda bw: max(1, math.ceil(bw / cap_per_mux_gbps))
+        lambda bw: max(1, math.ceil(
+            math.ceil(bw / bw_per_lambda_gbps) * 1.25 / lambdes_per_mux
+        ))
     )
     # Cost per multiplexor = equipo_troncal_optico_40l (60.000 €)
     # Es posen 2 per anell (un a cada extrem de l'anell, com a mínim)
